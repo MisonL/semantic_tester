@@ -1,8 +1,9 @@
 <div align="center">
 <h1>🚀 AI客服问答语义比对工具</h1>
 </div>
-
+<div align="center">
 ![Python版本](https://img.shields.io/badge/Python-3.8+-blue?logo=python) ![许可证](https://img.shields.io/badge/License-MIT-green)
+</div>
 
 ## 📖 简介
 这是一个用于评估AI客服回答与源知识库文档内容在语义上是否相符的Python工具。
