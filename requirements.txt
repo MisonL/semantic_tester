@@ -1,0 +1,6 @@
+pandas
+google-genai
+python-dotenv
+colorama
+google-api-core
+openpyxl
