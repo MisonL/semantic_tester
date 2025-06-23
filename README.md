@@ -2,7 +2,8 @@
 <h1>🚀 AI客服问答语义比对工具</h1>
 </div>
 <div align="center">
-![Python版本](https://img.shields.io/badge/Python-3.8+-blue?logo=python) ![许可证](https://img.shields.io/badge/License-MIT-green)
+<img src="https://img.shields.io/badge/Python-3.8+-blue?logo=python" alt="Python版本">
+<img src="https://img.shields.io/badge/License-MIT-green" alt="许可证">
 </div>
 
 ## 📖 简介
