@@ -1,12 +1,12 @@
 <div align="center">
 <h1>🚀 AI客服问答语义比对工具</h1>
 </div>
-<div align="center">
-<img src="https://img.shields.io/badge/Python-3.8+-blue?logo=python" alt="Python版本"> <img src="https://img.shields.io/badge/License-MIT-green" alt="许可证">
-</div>
+
+![Python版本](https://img.shields.io/badge/Python-3.8+-blue?logo=python) ![许可证](https://img.shields.io/badge/License-MIT-green)
 
 ## 📖 简介
 这是一个用于评估AI客服回答与源知识库文档内容在语义上是否相符的Python工具。
+**建议与 [Dify 聊天客户端测试工具](https://github.com/MisonL/dify_chat_tester) 项目搭配使用，以实现Dify应用问答效果的自动化评估。**
 它通过调用Google Gemini API，对给定的问题、AI客服回答和源文档内容进行比对，
 判断AI客服的回答是否能够从源文档中合理推断，或是否与源文档的核心信息一致。
 工具支持多密钥轮转、速率限制处理，并能从Excel文件读取数据，将比对结果实时写入Excel。
