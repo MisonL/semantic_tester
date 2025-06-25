@@ -25,7 +25,7 @@ AI客服问答语义比对工具
     *   创建或获取您的 Gemini API 密钥
 
 2.  **设置环境变量：**
-    *   配置API密钥到 `GEMINI_API_KEYS` 或 `GOOGLE_API_KEY` 环境变量
+    *   配置API密钥到 `GEMINI_API_KEYS` 环境变量
     *   支持多个密钥（逗号/空格分隔）：
         `export GEMINI_API_KEYS='密钥1,密钥2,密钥3'`
     *   （可选）指定模型版本：
@@ -172,11 +172,6 @@ logger = logging.getLogger(__name__) # 使用logger实例
 
 # 修改为加载多个API Key
 GEMINI_API_KEYS_STR = os.getenv('GEMINI_API_KEYS')
-# 兼容 GOOGLE_API_KEY 环境变量
-if not GEMINI_API_KEYS_STR:
-    GEMINI_API_KEYS_STR = os.getenv('GOOGLE_API_KEY')
-    if GEMINI_API_KEYS_STR:
-        logger.warning("GEMINI_API_KEYS 环境变量未设置，使用 GOOGLE_API_KEY。")
 
 GEMINI_API_KEYS = [key.strip() for key in re.split(r'[\s,]+', GEMINI_API_KEYS_STR) if key.strip()] if GEMINI_API_KEYS_STR else []
 
@@ -553,7 +548,7 @@ def main():
     # API Keys 已在文件顶部加载到 GEMINI_API_KEYS 列表中
 
     if not GEMINI_API_KEYS:
-        logger.critical("错误：请设置 GEMINI_API_KEYS 或 GOOGLE_API_KEY 环境变量。")
+        logger.critical("错误：请设置 GEMINI_API_KEYS 环境变量。")
         logger.info("您可以通过以下命令设置（临时）：")
         logger.info("export GEMINI_API_KEYS='您的API密钥1,您的API密钥2'")
         logger.info("或者在您的.zshrc或.bashrc文件中设置（永久）。")

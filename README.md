@@ -55,7 +55,7 @@ pip install -r requirements.txt
 
 ## 🚦 使用指南
 ### 1. 设置环境变量
-将您的 Gemini API 密钥配置到环境变量 `GEMINI_API_KEYS` 或 `GOOGLE_API_KEY` 中。支持多密钥自动轮转和冷却处理：
+将您的 Gemini API 密钥配置到环境变量 `GEMINI_API_KEYS` 中。支持多密钥自动轮转和冷却处理：
 ```bash
 export GEMINI_API_KEYS='API_KEY_1,API_KEY_2,API_KEY_3'
 ```
