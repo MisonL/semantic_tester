@@ -123,7 +123,7 @@ class Config:
 
     def print_settings(self):
         """打印当前设置"""
-        print(f"\n=== 当前配置设置 ===")
+        print("\n=== 当前配置设置 ===")
         settings_dict = self.settings.to_dict()
         for key, value in settings_dict.items():
             if isinstance(value, bool):

@@ -16,12 +16,14 @@ logger = logging.getLogger(__name__)
 
 try:
     import colorama
+
     colorama.init(autoreset=True)
     GREEN = colorama.Fore.GREEN
     RED = colorama.Fore.RED
     YELLOW = colorama.Fore.YELLOW
     RESET = colorama.Fore.RESET
 except ImportError:
+
     class Style:
         GREEN = ""
         RED = ""
@@ -137,7 +139,9 @@ class DifyProvider(AIProvider):
             return "错误", error_msg
 
         # 构造语义分析提示词
-        prompt = self._build_semantic_analysis_prompt(question, ai_answer, source_document)
+        prompt = self._build_semantic_analysis_prompt(
+            question, ai_answer, source_document
+        )
 
         try:
             # 发送请求到 Dify API
@@ -215,7 +219,9 @@ class DifyProvider(AIProvider):
             logger.error(error_msg)
             return "错误", error_msg
 
-    def _build_semantic_analysis_prompt(self, question: str, ai_answer: str, source_document: str) -> str:
+    def _build_semantic_analysis_prompt(
+        self, question: str, ai_answer: str, source_document: str
+    ) -> str:
         """
         构建语义分析提示词
 
@@ -268,7 +274,7 @@ AI客服回答：
         """
         try:
             # 尝试提取判断结果和判断依据
-            lines = response.strip().split('\n')
+            lines = response.strip().split("\n")
             result = ""
             reason = ""
 

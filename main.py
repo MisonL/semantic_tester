@@ -551,7 +551,6 @@ class SemanticTestApp:
 
         print("\n可用供应商:")
         for i, provider_info in enumerate(providers, 1):
-            provider_id = provider_info["id"]
             provider_name = provider_info["name"]
             is_configured = provider_info["configured"]
             is_current = provider_info.get("is_current", False)

@@ -170,7 +170,9 @@ class EnvManager:
         # 分割多个密钥
         all_keys = []
         if api_keys_str:
-            all_keys = [key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()]
+            all_keys = [
+                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
+            ]
 
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
@@ -206,7 +208,9 @@ class EnvManager:
         # 分割多个密钥
         all_keys = []
         if api_keys_str:
-            all_keys = [key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()]
+            all_keys = [
+                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
+            ]
 
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
@@ -240,7 +244,9 @@ class EnvManager:
         # 分割多个密钥
         all_keys = []
         if api_keys_str:
-            all_keys = [key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()]
+            all_keys = [
+                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
+            ]
 
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
@@ -276,7 +282,9 @@ class EnvManager:
         # 分割多个密钥
         all_keys = []
         if api_keys_str:
-            all_keys = [key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()]
+            all_keys = [
+                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
+            ]
 
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
@@ -325,12 +333,12 @@ class EnvManager:
 
     def print_env_status(self):
         """打印环境变量状态"""
-        print(f"\n=== 环境配置状态 ===")
+        print("\n=== 环境配置状态 ===")
 
         # 显示配置文件状态
         self.env_loader.print_config_status()
 
-        print(f"\n--- 环境变量优先级配置 ---")
+        print("\n--- 环境变量优先级配置 ---")
         print(
             f"Gemini API 密钥: {'已设置' if self.gemini_api_keys else '未设置'} ({len(self.gemini_api_keys)} 个)"
         )
@@ -348,7 +356,9 @@ class EnvManager:
         print(f"Dify API 密钥: {'已设置' if dify_config['has_config'] else '未设置'}")
 
         anthropic_config = self.get_anthropic_config()
-        print(f"Anthropic API 密钥: {'已设置' if anthropic_config['has_config'] else '未设置'}")
+        print(
+            f"Anthropic API 密钥: {'已设置' if anthropic_config['has_config'] else '未设置'}"
+        )
 
         iflow_config = self.get_iflow_config()
         print(f"iFlow API 密钥: {'已设置' if iflow_config['has_config'] else '未设置'}")
@@ -380,34 +390,50 @@ class EnvManager:
         """记录所有供应商的模板值统计摘要"""
         # 统计Gemini模板值
         gemini_template_count = 0
-        if hasattr(self, 'gemini_api_keys'):
+        if hasattr(self, "gemini_api_keys"):
             all_gemini_keys = []
-            gemini_api_keys_str = os.getenv("GEMINI_API_KEY") or self.env_loader.get_str("GEMINI_API_KEY", "")
+            gemini_api_keys_str = os.getenv(
+                "GEMINI_API_KEY"
+            ) or self.env_loader.get_str("GEMINI_API_KEY", "")
             if gemini_api_keys_str:
-                all_gemini_keys = [key.strip() for key in re.split(r"[\s,]+", gemini_api_keys_str) if key.strip()]
-            valid_gemini_keys = [key for key in all_gemini_keys if not self._is_template_value(key)]
+                all_gemini_keys = [
+                    key.strip()
+                    for key in re.split(r"[\s,]+", gemini_api_keys_str)
+                    if key.strip()
+                ]
+            valid_gemini_keys = [
+                key for key in all_gemini_keys if not self._is_template_value(key)
+            ]
             gemini_template_count = len(all_gemini_keys) - len(valid_gemini_keys)
 
         # 统计其他供应商模板值
         template_counts = {"gemini": gemini_template_count}
 
         # OpenAI
-        openai_key = os.getenv("OPENAI_API_KEY") or self.env_loader.get_str("OPENAI_API_KEY", "")
+        openai_key = os.getenv("OPENAI_API_KEY") or self.env_loader.get_str(
+            "OPENAI_API_KEY", ""
+        )
         if openai_key and self._is_template_value(openai_key):
             template_counts["openai"] = 1
 
         # Anthropic
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY") or self.env_loader.get_str("ANTHROPIC_API_KEY", "")
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY") or self.env_loader.get_str(
+            "ANTHROPIC_API_KEY", ""
+        )
         if anthropic_key and self._is_template_value(anthropic_key):
             template_counts["anthropic"] = 1
 
         # Dify
-        dify_key = os.getenv("DIFY_API_KEY") or self.env_loader.get_str("DIFY_API_KEY", "")
+        dify_key = os.getenv("DIFY_API_KEY") or self.env_loader.get_str(
+            "DIFY_API_KEY", ""
+        )
         if dify_key and self._is_template_value(dify_key):
             template_counts["dify"] = 1
 
         # iFlow
-        iflow_key = os.getenv("IFLOW_API_KEY") or self.env_loader.get_str("IFLOW_API_KEY", "")
+        iflow_key = os.getenv("IFLOW_API_KEY") or self.env_loader.get_str(
+            "IFLOW_API_KEY", ""
+        )
         if iflow_key and self._is_template_value(iflow_key):
             template_counts["iflow"] = 1
 
@@ -417,7 +443,9 @@ class EnvManager:
 
         # 记录摘要
         if total_template_keys > 0:
-            logger.warning(f"检测到 {total_template_keys} 个模板API密钥（共 {total_suppliers} 个供应商）")
+            logger.warning(
+                f"检测到 {total_template_keys} 个模板API密钥（共 {total_suppliers} 个供应商）"
+            )
 
             # 详细列出每个供应商的情况
             for supplier, count in template_counts.items():
@@ -427,7 +455,7 @@ class EnvManager:
                         "openai": "OpenAI",
                         "anthropic": "Anthropic",
                         "dify": "Dify",
-                        "iflow": "iFlow"
+                        "iflow": "iFlow",
                     }.get(supplier, supplier)
                     logger.warning(f"  - {supplier_name}: {count} 个模板值")
 

@@ -101,10 +101,6 @@ class OpenAIProvider(AIProvider):
         """检查供应商是否已正确配置"""
         return len(self.api_keys) > 0 and self.client is not None
 
-    def is_configured(self) -> bool:
-        """检查供应商是否已正确配置"""
-        return self.has_config and self.client is not None
-
     def check_semantic_similarity(
         self,
         question: str,

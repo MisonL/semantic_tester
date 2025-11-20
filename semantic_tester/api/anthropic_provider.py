@@ -80,9 +80,10 @@ class AnthropicProvider(AIProvider):
         """
         try:
             import anthropic
+
             client = anthropic.Anthropic(api_key=api_key, timeout=5)
             # 发送简单的测试请求
-            response = client.messages.create(
+            client.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=5,
                 messages=[{"role": "user", "content": "Hi"}],
@@ -167,7 +168,7 @@ class AnthropicProvider(AIProvider):
             )
 
             # 发送简单的测试请求
-            response = client.messages.create(
+            client.messages.create(
                 model=self.default_model,
                 max_tokens=10,
                 messages=[{"role": "user", "content": "Hi"}],
@@ -193,7 +194,9 @@ class AnthropicProvider(AIProvider):
                 "error_type": "api_error",
             }
 
-    def analyze_semantic(self, question: str, answer: str, knowledge: str) -> Dict[str, Any]:
+    def analyze_semantic(
+        self, question: str, answer: str, knowledge: str
+    ) -> Dict[str, Any]:
         """
         执行语义分析
 
@@ -334,7 +337,8 @@ class AnthropicProvider(AIProvider):
 
             # 解析置信度
             import re
-            confidence_match = re.search(r'置信度：【(\d+)%】', response_text)
+
+            confidence_match = re.search(r"置信度：【(\d+)%】", response_text)
             if confidence_match:
                 confidence = float(confidence_match.group(1)) / 100
 
@@ -460,9 +464,7 @@ class AnthropicProvider(AIProvider):
             time.sleep(max_cooldown)
             self._rotate_key(force_rotate=True)
 
-    def batch_analyze(
-        self, items: list, progress_callback=None
-    ) -> list:
+    def batch_analyze(self, items: list, progress_callback=None) -> list:
         """
         批量语义分析
 

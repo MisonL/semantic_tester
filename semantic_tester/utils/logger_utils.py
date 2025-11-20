@@ -131,11 +131,11 @@ class LoggerUtils:
             level: 消息级别 (INFO, SUCCESS, WARNING, ERROR)
         """
         colors = {
-            "INFO": "\033[37m",      # 白色
-            "SUCCESS": "\033[92m",   # 绿色
-            "WARNING": "\033[93m",   # 黄色
-            "ERROR": "\033[91m",     # 红色
-            "RESET": "\033[0m",      # 重置
+            "INFO": "\033[37m",  # 白色
+            "SUCCESS": "\033[92m",  # 绿色
+            "WARNING": "\033[93m",  # 黄色
+            "ERROR": "\033[91m",  # 红色
+            "RESET": "\033[0m",  # 重置
         }
 
         color = colors.get(level, colors["INFO"])
@@ -143,7 +143,9 @@ class LoggerUtils:
         print(f"{color}{message}{reset}")
 
     @staticmethod
-    def set_temp_log_level(level: str, target_handlers: Optional[List[logging.Handler]] = None):
+    def set_temp_log_level(
+        level: str, target_handlers: Optional[List[logging.Handler]] = None
+    ):
         """
         临时设置日志级别，用于静默某些操作
 
@@ -168,7 +170,9 @@ class LoggerUtils:
         """临时静默控制台输出"""
         root_logger = logging.getLogger()
         for handler in root_logger.handlers:
-            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                handler, logging.FileHandler
+            ):
                 # 临时将控制台处理器级别设为CRITICAL+1，完全静默
                 handler.setLevel(logging.CRITICAL + 10)
 
@@ -177,7 +181,9 @@ class LoggerUtils:
         """恢复控制台输出级别"""
         root_logger = logging.getLogger()
         for handler in root_logger.handlers:
-            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                handler, logging.FileHandler
+            ):
                 # 恢复控制台处理器为WARNING级别
                 handler.setLevel(logging.WARNING)
 

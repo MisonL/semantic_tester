@@ -45,7 +45,7 @@ class CLIInterface:
         # 获取已配置的供应商
         configured_providers = provider_manager.get_configured_providers()
 
-        print(f"\n=== AI 供应商选择 ===")
+        print("\n=== AI 供应商选择 ===")
         print(
             f"可用供应商: {len(providers)} 个，已配置: {len(configured_providers)} 个"
         )
@@ -66,7 +66,7 @@ class CLIInterface:
 
         # 如果没有已配置的供应商，询问是否继续
         if not configured_providers:
-            print(f"\n⚠️  警告: 没有已配置的 AI 供应商")
+            print("\n⚠️  警告: 没有已配置的 AI 供应商")
             proceed = input("是否继续选择未配置的供应商? (y/N): ").strip().lower()
             if proceed not in ["y", "yes"]:
                 return None
@@ -355,7 +355,7 @@ class CLIInterface:
                 else:
                     print(f"选择无效，请输入 1-{len(response_cols)} 之间的数字。")
             except ValueError:
-                print(f"请输入有效的数字。")
+                print("请输入有效的数字。")
 
     @staticmethod
     def print_progress(current: int, total: int):

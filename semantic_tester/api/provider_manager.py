@@ -107,10 +107,14 @@ class ProviderManager:
             # 如果没有有效供应商但有已配置的供应商，选择第一个已配置的
             first_configured_id, first_configured_provider = configured_providers[0]
             self.current_provider_id = first_configured_id
-            logger.warning(f"没有API验证通过的供应商，选择第一个已配置供应商: {first_configured_provider.name}")
+            logger.warning(
+                f"没有API验证通过的供应商，选择第一个已配置供应商: {first_configured_provider.name}"
+            )
         elif unconfigured_providers:
             # 最后回退到未配置的供应商
-            first_unconfigured_id, first_unconfigured_provider = unconfigured_providers[0]
+            first_unconfigured_id, first_unconfigured_provider = unconfigured_providers[
+                0
+            ]
             self.current_provider_id = first_unconfigured_id
             logger.warning("所有供应商都未配置，选择第一个未配置供应商")
             logger.info(f"选择供应商: {first_unconfigured_provider.name}")
@@ -208,7 +212,9 @@ class ProviderManager:
             has_config = openai_config.get("has_config", False)
 
             if not has_config:
-                logger.warning("OpenAI API 密钥未配置或为模板值，将创建未配置的供应商实例")
+                logger.warning(
+                    "OpenAI API 密钥未配置或为模板值，将创建未配置的供应商实例"
+                )
 
             provider_config = {
                 "name": provider_name,
@@ -229,7 +235,9 @@ class ProviderManager:
             has_config = anthropic_config.get("has_config", False)
 
             if not has_config:
-                logger.warning("Anthropic API 密钥未配置或为模板值，将创建未配置的供应商实例")
+                logger.warning(
+                    "Anthropic API 密钥未配置或为模板值，将创建未配置的供应商实例"
+                )
 
             provider_config = {
                 "name": provider_name,
@@ -250,7 +258,9 @@ class ProviderManager:
             has_config = dify_config.get("has_config", bool(api_key))
 
             if not has_config:
-                logger.warning("Dify API 密钥未配置或为模板值，将创建未配置的供应商实例")
+                logger.warning(
+                    "Dify API 密钥未配置或为模板值，将创建未配置的供应商实例"
+                )
 
             provider_config = {
                 "name": provider_name,
@@ -271,7 +281,9 @@ class ProviderManager:
             has_config = iflow_config.get("has_config", False)
 
             if not has_config:
-                logger.warning("iFlow API 密钥未配置或为模板值，将创建未配置的供应商实例")
+                logger.warning(
+                    "iFlow API 密钥未配置或为模板值，将创建未配置的供应商实例"
+                )
 
             provider_config = {
                 "name": provider_name,
@@ -424,14 +436,14 @@ class ProviderManager:
 
     def print_provider_status(self):
         """打印供应商状态"""
-        print(f"\n=== AI 供应商状态 ===")
+        print("\n=== AI 供应商状态 ===")
         print(f"总供应商数: {len(self.providers)}")
         current_provider = self.get_current_provider()
         current_name = current_provider.name if current_provider else "无"
         print(f"当前供应商: {current_name}")
         print(f"已配置供应商数: {len(self.get_configured_providers())}")
 
-        print(f"\n--- 供应商详情 ---")
+        print("\n--- 供应商详情 ---")
         for i, (provider_id, provider) in enumerate(self.providers.items(), 1):
             status = "✅ 已配置" if provider.is_configured() else "❌ 未配置"
             current = " (当前)" if provider_id == self.current_provider_id else ""
@@ -486,7 +498,7 @@ class ProviderManager:
                     "name": provider.name,
                     "status": "未配置",
                     "valid": False,
-                    "message": "供应商未配置API密钥"
+                    "message": "供应商未配置API密钥",
                 }
                 unconfigured_count += 1
                 continue
@@ -498,7 +510,7 @@ class ProviderManager:
                     "name": provider.name,
                     "status": "验证通过",
                     "valid": True,
-                    "message": "API密钥有效"
+                    "message": "API密钥有效",
                 }
                 valid_count += 1
             else:
@@ -506,7 +518,7 @@ class ProviderManager:
                     "name": provider.name,
                     "status": "验证失败",
                     "valid": False,
-                    "message": "API密钥无效或无法连接"
+                    "message": "API密钥无效或无法连接",
                 }
                 invalid_count += 1
 
@@ -515,7 +527,7 @@ class ProviderManager:
             "valid": valid_count,
             "invalid": invalid_count,
             "unconfigured": unconfigured_count,
-            "results": validation_results
+            "results": validation_results,
         }
 
     def revalidate_all_providers(self):

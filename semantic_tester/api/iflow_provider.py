@@ -8,7 +8,6 @@ iFlow AI 供应商实现
 邮箱：1360962086@qq.com
 """
 
-import json
 import logging
 import requests
 from typing import Dict, List, Optional, Any
@@ -38,12 +37,9 @@ class IflowProvider(AIProvider):
         self.default_model = config.get("model", "qwen3-max")
 
         # iFlow 支持的模型列表
-        self.available_models = config.get("models", [
-            "qwen3-max",
-            "kimi-k2-0905",
-            "glm-4.6",
-            "deepseek-v3.2"
-        ])
+        self.available_models = config.get(
+            "models", ["qwen3-max", "kimi-k2-0905", "glm-4.6", "deepseek-v3.2"]
+        )
 
         # 内部状态
         self.client = None
@@ -54,10 +50,12 @@ class IflowProvider(AIProvider):
         # iFlow 使用 requests 直接调用，不需要特殊客户端
         if self.has_config and self.api_key:
             self.client = requests.Session()
-            self.client.headers.update({
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            })
+            self.client.headers.update(
+                {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                }
+            )
             logger.info("iFlow 客户端初始化成功")
         else:
             logger.warning("iFlow API 密钥未配置，跳过客户端初始化")
@@ -99,7 +97,7 @@ class IflowProvider(AIProvider):
             response = requests.get(
                 f"{self.base_url}/models",
                 headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10
+                timeout=10,
             )
             return response.status_code == 200
         except Exception as e:
@@ -139,12 +137,9 @@ class IflowProvider(AIProvider):
             messages = [
                 {
                     "role": "system",
-                    "content": "你是一个专业的语义分析专家。请根据提供的源文档内容，判断AI客服的回答在语义上是否与源文档相符。"
+                    "content": "你是一个专业的语义分析专家。请根据提供的源文档内容，判断AI客服的回答在语义上是否与源文档相符。",
                 },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
+                {"role": "user", "content": prompt},
             ]
 
             payload = {
@@ -163,9 +158,7 @@ class IflowProvider(AIProvider):
 
             # 发送请求
             response = self.client.post(
-                f"{self.base_url}/chat/completions",
-                json=payload,
-                timeout=60
+                f"{self.base_url}/chat/completions", json=payload, timeout=60
             )
             response.raise_for_status()
 
@@ -189,7 +182,9 @@ class IflowProvider(AIProvider):
             logger.error(error_msg)
             return "错误", error_msg
         except requests.exceptions.HTTPError as e:
-            error_msg = f"iFlow API HTTP错误: {e.response.status_code} - {e.response.text}"
+            error_msg = (
+                f"iFlow API HTTP错误: {e.response.status_code} - {e.response.text}"
+            )
             logger.error(error_msg)
             return "错误", error_msg
         except Exception as e:
@@ -197,7 +192,9 @@ class IflowProvider(AIProvider):
             logger.error(error_msg)
             return "错误", error_msg
 
-    def _build_semantic_prompt(self, question: str, ai_answer: str, source_document: str) -> str:
+    def _build_semantic_prompt(
+        self, question: str, ai_answer: str, source_document: str
+    ) -> str:
         """
         构建语义分析提示词
 
@@ -247,7 +244,7 @@ class IflowProvider(AIProvider):
 
         # 查找判断结果行
         if "判断结果：" in content:
-            lines = content.split('\n')
+            lines = content.split("\n")
             for i, line in enumerate(lines):
                 if "判断结果：" in line:
                     result_part = line.split("判断结果：")[-1].strip()
@@ -263,7 +260,7 @@ class IflowProvider(AIProvider):
                                 reason_lines.append(lines[j].strip())
 
                         if reason_lines:
-                            reason = '\n'.join(reason_lines)
+                            reason = "\n".join(reason_lines)
                         else:
                             # 如果没有后续行，使用当前行的剩余部分
                             if "判断依据：" in line:
@@ -273,12 +270,21 @@ class IflowProvider(AIProvider):
         # 备用解析：如果没有找到明确格式，尝试关键词匹配
         if result == "不确定":
             content_lower = content.lower()
-            if any(keyword in content_lower for keyword in ["是", "符合", "一致", "正确", "能够推断"]):
-                if any(negative in content_lower for negative in ["不是", "不符合", "不一致", "错误", "无法推断"]):
+            if any(
+                keyword in content_lower
+                for keyword in ["是", "符合", "一致", "正确", "能够推断"]
+            ):
+                if any(
+                    negative in content_lower
+                    for negative in ["不是", "不符合", "不一致", "错误", "无法推断"]
+                ):
                     result = "否"
                 else:
                     result = "是"
-            elif any(keyword in content_lower for keyword in ["不是", "不符合", "不一致", "错误", "无法推断"]):
+            elif any(
+                keyword in content_lower
+                for keyword in ["不是", "不符合", "不一致", "错误", "无法推断"]
+            ):
                 result = "否"
 
         # 清理判断依据

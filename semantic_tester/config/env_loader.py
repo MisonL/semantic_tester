@@ -197,7 +197,7 @@ class EnvLoader:
 
     def print_config_status(self):
         """打印配置状态"""
-        print(f"\n=== 配置文件状态 ===")
+        print("\n=== 配置文件状态 ===")
         print(f"配置文件: {self.env_file}")
         print(f"配置项数量: {len(self.config)}")
 

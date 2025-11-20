@@ -128,7 +128,7 @@ class ExcelProcessor:
 
     def display_format_info(self):
         """显示格式检测结果"""
-        print(f"\nExcel 文件中的列名:")
+        print("\nExcel 文件中的列名:")
         for i, col_name in enumerate(self.column_names):
             print(f"{i+1}. {col_name}")
 
@@ -198,7 +198,7 @@ class ExcelProcessor:
                                 f"选择无效，请输入 1-{len(response_cols)} 之间的数字。"
                             )
                     except ValueError:
-                        print(f"请输入有效的数字。")
+                        print("请输入有效的数字。")
             elif len(response_cols) == 1:
                 response_col = response_cols[0]
             else:
@@ -214,7 +214,7 @@ class ExcelProcessor:
                 "ai_answer_col_index": ai_answer_col_index,
             }
 
-            print(f"\n已配置列映射：")
+            print("\n已配置列映射：")
             print(f"  • 文档名称: 列 {doc_name_col_index + 1} ('文档名称')")
             print(
                 f"  • 问题点: 列 {question_col_index + 1} ('{self.format_info['question_col']}')"
