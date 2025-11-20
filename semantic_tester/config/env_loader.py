@@ -8,7 +8,7 @@
 import logging
 import os
 import sys
-from typing import List, Union
+from typing import List, Union, Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class EnvLoader:
 
     def __init__(self, env_file: str = ".env"):
         self.env_file = env_file
-        self.config = {}
+        self.config: dict[str, Any] = {}
         self.load_config()
 
     def load_config(self):
@@ -170,7 +170,7 @@ class EnvLoader:
     def get_ai_providers(self) -> List[dict]:
         """获取AI供应商配置"""
         providers_str = self.get_str("AI_PROVIDERS", "1:Gemini:gemini")
-        providers = []
+        providers: list[dict[str, Any]] = []
 
         if not providers_str:
             return providers

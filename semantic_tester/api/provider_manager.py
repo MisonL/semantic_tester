@@ -167,7 +167,9 @@ class ProviderManager:
             return anthropic_config.get("api_key", "")
         elif provider_id == "dify":
             dify_config = self.config.get("dify", {})
-            return dify_config.get("api_key", "")
+            # Dify 使用 api_keys（复数），返回第一个密钥用于验证
+            api_keys = dify_config.get("api_keys", [])
+            return api_keys[0] if api_keys else ""
         elif provider_id == "iflow":
             iflow_config = self.config.get("iflow", {})
             return iflow_config.get("api_key", "")
@@ -280,10 +282,10 @@ class ProviderManager:
         创建 Dify 供应商实例
         """
         dify_config = self.config.get("dify", {})
-        api_key = dify_config.get("api_key", "")
+        api_keys = dify_config.get("api_keys", [])
         base_url = dify_config.get("base_url", "https://api.dify.ai/v1")
         app_id = dify_config.get("app_id", "")
-        has_config = dify_config.get("has_config", bool(api_key))
+        has_config = dify_config.get("has_config", len(api_keys) > 0)
 
         if not has_config:
             logger.warning(
@@ -293,7 +295,7 @@ class ProviderManager:
         provider_config = {
             "name": provider_name,
             "id": "dify",
-            "api_key": api_key,
+            "api_keys": api_keys,
             "base_url": base_url,
             "app_id": app_id,
             "has_config": has_config,

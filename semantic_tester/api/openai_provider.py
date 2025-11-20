@@ -180,7 +180,8 @@ class OpenAIProvider(AIProvider):
         )
 
         # 获取可用客户端
-        if not self._get_available_client():
+        client = self._get_available_client()
+        if not client:
             logger.warning("无可用 OpenAI 客户端，跳过 API 调用")
             if attempt < max_retries - 1:
                 return "RETRY", ""
@@ -188,7 +189,7 @@ class OpenAIProvider(AIProvider):
                 return "错误", "无可用 OpenAI 模型"
 
         try:
-            response = self.client.chat.completions.create(
+            response = client.chat.completions.create(
                 model=model_to_use,
                 messages=[
                     {"role": "system", "content": "你是一个专业的语义分析助手。"},

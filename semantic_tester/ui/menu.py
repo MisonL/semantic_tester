@@ -24,42 +24,23 @@ class MenuHandler:
             str: 用户选择
         """
         print(f"\n{Fore.CYAN}=== AI语义分析工具 ==={Style.RESET_ALL}")
-        print("1. 开始新的语义分析")
-        print("2. 查看使用说明")
-        print("3. 配置设置")
-        print("4. AI供应商管理")
-        print("5. 退出程序")
+        print("🎯 请选择操作:")
+        print("   1. 开始新的语义分析")
+        print("   2. 查看使用说明")
+        print("   3. AI供应商管理")
+        print("   4. 退出程序")
+        print()
 
         while True:
-            choice = input(
-                f"\n{Fore.YELLOW}请选择操作 (1-5): {Style.RESET_ALL}"
-            ).strip()
-            if choice in ["1", "2", "3", "4", "5"]:
-                return choice
-            print(f"{Fore.RED}无效选择，请输入 1-5{Style.RESET_ALL}")
+            try:
+                choice = input(f"{Fore.YELLOW}请输入选项 (1-4): {Style.RESET_ALL}").strip()
+                if choice in ["1", "2", "3", "4"]:
+                    return choice
+                print(f"{Fore.RED}❌ 无效选项，请重新选择{Style.RESET_ALL}")
+            except (EOFError, KeyboardInterrupt):
+                return "4"  # 返回退出选项
 
-    @staticmethod
-    def show_config_menu() -> str:
-        """
-        显示配置菜单
-
-        Returns:
-            str: 用户选择
-        """
-        print(f"\n{Fore.CYAN}=== 配置设置 ==={Style.RESET_ALL}")
-        print("1. 查看 API 密钥配置")
-        print("2. 配置默认知识库目录")
-        print("3. 配置默认输出目录")
-        print("4. 重置配置")
-        print("5. 返回主菜单")
-
-        while True:
-            choice = input(
-                f"\n{Fore.YELLOW}请选择操作 (1-5): {Style.RESET_ALL}"
-            ).strip()
-            if choice in ["1", "2", "3", "4", "5"]:
-                return choice
-            print(f"{Fore.RED}无效选择，请输入 1-5{Style.RESET_ALL}")
+    
 
     @staticmethod
     def show_provider_management_menu() -> str:
@@ -77,12 +58,13 @@ class MenuHandler:
         print("5. 返回主菜单")
 
         while True:
-            choice = input(
-                f"\n{Fore.YELLOW}请选择操作 (1-5): {Style.RESET_ALL}"
-            ).strip()
-            if choice in ["1", "2", "3", "4", "5"]:
-                return choice
-            print(f"{Fore.RED}无效选择，请输入 1-5{Style.RESET_ALL}")
+            try:
+                choice = input(f"\n{Fore.YELLOW}请选择操作 (1-5): {Style.RESET_ALL}").strip()
+                if choice in ["1", "2", "3", "4", "5"]:
+                    return choice
+                print(f"{Fore.RED}❌ 无效选择，请输入 1-5{Style.RESET_ALL}")
+            except (EOFError, KeyboardInterrupt):
+                return "5"  # 返回主菜单
 
     @staticmethod
     def show_help_menu() -> str:
@@ -100,12 +82,13 @@ class MenuHandler:
         print("5. 返回主菜单")
 
         while True:
-            choice = input(
-                f"\n{Fore.YELLOW}请选择查看内容 (1-5): {Style.RESET_ALL}"
-            ).strip()
-            if choice in ["1", "2", "3", "4", "5"]:
-                return choice
-            print(f"{Fore.RED}无效选择，请输入 1-5{Style.RESET_ALL}")
+            try:
+                choice = input(f"\n{Fore.YELLOW}请选择查看内容 (1-5): {Style.RESET_ALL}").strip()
+                if choice in ["1", "2", "3", "4", "5"]:
+                    return choice
+                print(f"{Fore.RED}❌ 无效选择，请输入 1-5{Style.RESET_ALL}")
+            except (EOFError, KeyboardInterrupt):
+                return "5"  # 返回主菜单
 
     @staticmethod
     def display_program_overview():
@@ -223,10 +206,15 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
 
         while True:
             try:
-                choice = input(
+                user_input = input(
                     f"\n{Fore.YELLOW}请选择 (1-{len(options) + (1 if allow_custom else 0)}): {Style.RESET_ALL}"
                 ).strip()
-                choice_idx = int(choice) - 1
+                
+                # 处理键盘中断
+                if user_input.lower() in ['q', 'quit', 'exit']:
+                    raise KeyboardInterrupt()
+                
+                choice_idx = int(user_input) - 1
 
                 if 0 <= choice_idx < len(options):
                     return options[choice_idx]
@@ -237,11 +225,14 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
                     if custom_input:
                         return custom_input
                     else:
-                        print(f"{Fore.RED}自定义输入不能为空{Style.RESET_ALL}")
+                        print(f"{Fore.RED}❌ 自定义输入不能为空{Style.RESET_ALL}")
                 else:
-                    print(f"{Fore.RED}无效选择{Style.RESET_ALL}")
+                    print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
             except ValueError:
-                print(f"{Fore.RED}请输入有效数字{Style.RESET_ALL}")
+                print(f"{Fore.RED}❌ 请输入有效数字{Style.RESET_ALL}")
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{Fore.YELLOW}操作已取消{Style.RESET_ALL}")
+                raise
 
     @staticmethod
     def confirm_action(message: str) -> bool:
@@ -255,17 +246,21 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
             bool: 用户确认结果
         """
         while True:
-            response = (
-                input(f"\n{Fore.YELLOW}{message} (y/N): {Style.RESET_ALL}")
-                .lower()
-                .strip()
-            )
-            if response == "y":
-                return True
-            elif response in ["n", ""]:
+            try:
+                response = (
+                    input(f"\n{Fore.YELLOW}{message} (y/N): {Style.RESET_ALL}")
+                    .lower()
+                    .strip()
+                )
+                if response == "y":
+                    return True
+                elif response in ["n", ""]:
+                    return False
+                else:
+                    print(f"{Fore.RED}❌ 请输入 y 或 n{Style.RESET_ALL}")
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{Fore.YELLOW}操作已取消{Style.RESET_ALL}")
                 return False
-            else:
-                print(f"{Fore.RED}请输入 y 或 n{Style.RESET_ALL}")
 
     @staticmethod
     def get_input_with_validation(
@@ -283,11 +278,20 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
             str: 用户输入
         """
         while True:
-            user_input = input(f"{Fore.YELLOW}{prompt}: {Style.RESET_ALL}").strip()
-            if not user_input:
-                continue
+            try:
+                user_input = input(f"{Fore.YELLOW}{prompt}: {Style.RESET_ALL}").strip()
+                
+                # 处理退出命令
+                if user_input.lower() in ['q', 'quit', 'exit']:
+                    raise KeyboardInterrupt()
+                
+                if not user_input:
+                    continue
 
-            if validator is None or validator(user_input):
-                return user_input
-            else:
-                print(f"{Fore.RED}{error_message}{Style.RESET_ALL}")
+                if validator is None or validator(user_input):
+                    return user_input
+                else:
+                    print(f"{Fore.RED}❌ {error_message}{Style.RESET_ALL}")
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{Fore.YELLOW}操作已取消{Style.RESET_ALL}")
+                raise

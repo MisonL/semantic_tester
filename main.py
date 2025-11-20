@@ -8,6 +8,7 @@ AI客服问答语义比对工具
 import logging
 import sys
 from typing import Optional
+from colorama import Fore, Style
 
 # 导入项目模块
 from semantic_tester.api import GeminiAPIHandler, check_semantic_similarity
@@ -183,14 +184,29 @@ class SemanticTestApp:
         result_columns = self.excel_processor.get_result_columns()
         self.excel_processor.setup_result_columns(result_columns)
 
-        # 获取其他配置
+        # 确认知识库目录
+        print(f"\n{Fore.CYAN}=== 确认任务配置 ==={Style.RESET_ALL}")
         knowledge_base_dir = CLIInterface.get_knowledge_base_dir()
-        show_comparison_result = CLIInterface.ask_show_comparison_result()
+        print(f"✅ 知识库目录: {knowledge_base_dir}")
+        
+        # 确认输出目录
         default_output_path = self.config.get_default_output_path(excel_path)
         output_path = CLIInterface.get_output_path(default_output_path)
-
+        print(f"✅ 输出目录: {output_path}")
+        
+        # 获取其他配置
+        show_comparison_result = CLIInterface.ask_show_comparison_result()
+        
         # 确保输出目录存在
         self.config.ensure_output_dir(output_path)
+        
+        # 最终确认
+        from semantic_tester.ui.menu import MenuHandler
+        if MenuHandler.confirm_action("确认开始处理吗？"):
+            print(f"\n{Fore.GREEN}开始处理数据...{Style.RESET_ALL}")
+        else:
+            print("操作已取消")
+            return
 
         # 开始处理
         self.process_data(
@@ -219,10 +235,11 @@ class SemanticTestApp:
             output_path: 输出路径
             show_comparison_result: 是否显示比对结果
         """
-        if not self._validate_excel_processor():
+        excel_processor = self._get_excel_processor_or_error()
+        if not excel_processor:
             return
 
-        total_records = self.excel_processor.get_total_records()
+        total_records = excel_processor.get_total_records()
         logger.info(f"共需处理 {total_records} 条问答记录。")
 
         processed_count = 0
@@ -239,6 +256,7 @@ class SemanticTestApp:
                 result_columns=result_columns,
                 output_path=output_path,
                 show_comparison_result=show_comparison_result,
+                excel_processor=excel_processor,
             )
 
             if result == "processed":
@@ -249,7 +267,7 @@ class SemanticTestApp:
                 error_count += 1
 
         # 保存最终结果
-        self.excel_processor.save_final_results(output_path)
+        excel_processor.save_final_results(output_path)
 
         # 显示处理摘要
         CLIInterface.print_result_summary(
@@ -276,6 +294,17 @@ class SemanticTestApp:
 
         return True
 
+    def _get_excel_processor_or_error(self) -> Optional["ExcelProcessor"]:
+        """
+        获取Excel处理器或返回None
+
+        Returns:
+            ExcelProcessor or None: Excel处理器实例
+        """
+        if not self._validate_excel_processor():
+            return None
+        return self.excel_processor
+
     def _process_single_row(
         self,
         row_index: int,
@@ -285,6 +314,7 @@ class SemanticTestApp:
         result_columns: dict,
         output_path: str,
         show_comparison_result: bool,
+        excel_processor: "ExcelProcessor",
     ) -> str:
         """
         处理单行数据
@@ -307,13 +337,14 @@ class SemanticTestApp:
         CLIInterface.print_progress(row_number, total_records)
 
         # 获取行数据
-        row_data = self.excel_processor.get_row_data(row_index, column_mapping)
+        row_data = excel_processor.get_row_data(row_index, column_mapping)
 
         # 验证行数据
         validation_errors = ValidationUtils.validate_row_data(row_data)
         if validation_errors:
             self._handle_validation_errors(
-                row_index, row_number, total_records, validation_errors, result_columns, output_path
+                row_index, row_number, total_records, validation_errors,
+                result_columns, output_path, excel_processor
             )
             return "skipped"
 
@@ -324,7 +355,8 @@ class SemanticTestApp:
 
         if not doc_content:
             self._handle_missing_document(
-                row_index, row_number, total_records, row_data["doc_name"], result_columns, output_path
+                row_index, row_number, total_records, row_data["doc_name"],
+                result_columns, output_path, excel_processor
             )
             return "error"
 
@@ -333,7 +365,7 @@ class SemanticTestApp:
             result, reason = self._call_semantic_api(row_data, doc_content)
 
             # 保存结果
-            self.excel_processor.save_result(
+            excel_processor.save_result(
                 row_index=row_index,
                 result=result,
                 reason=reason,
@@ -350,13 +382,13 @@ class SemanticTestApp:
                 )
 
             # 保存中间结果
-            self.excel_processor.save_intermediate_results(output_path, row_number)
+            excel_processor.save_intermediate_results(output_path, row_number)
 
             return "processed" if result not in ["错误", "跳过"] else "error"
 
         except Exception as e:
             self._handle_processing_error(
-                row_index, row_number, e, result_columns, output_path
+                row_index, row_number, e, result_columns, output_path, excel_processor
             )
             return "error"
 
@@ -368,6 +400,7 @@ class SemanticTestApp:
         validation_errors: list,
         result_columns: dict,
         output_path: str,
+        excel_processor: "ExcelProcessor",
     ):
         """
         处理验证错误
@@ -375,7 +408,7 @@ class SemanticTestApp:
         errors_str = "; ".join(validation_errors)
         error_msg = f"跳过第 {row_number}/{total_records} 条记录：{errors_str}"
         logger.warning(error_msg)
-        self.excel_processor.save_result(
+        excel_processor.save_result(
             row_index=row_index,
             result="跳过",
             reason=errors_str,
@@ -384,7 +417,7 @@ class SemanticTestApp:
 
         # 保存中间结果
         if row_number % self.config.auto_save_interval == 0:
-            self.excel_processor.save_intermediate_results(output_path, row_number)
+            excel_processor.save_intermediate_results(output_path, row_number)
 
     def _handle_missing_document(
         self,
@@ -394,6 +427,7 @@ class SemanticTestApp:
         doc_name: str,
         result_columns: dict,
         output_path: str,
+        excel_processor: "ExcelProcessor",
     ):
         """
         处理文档缺失的情况
@@ -401,14 +435,14 @@ class SemanticTestApp:
         logger.warning(
             f"第 {row_number}/{total_records} 条记录：未找到对应的Markdown文件"
         )
-        self.excel_processor.save_result(
+        excel_processor.save_result(
             row_index=row_index,
             result="源文档未找到",
             reason=f"未找到对应的Markdown文件：{doc_name}",
             result_columns=result_columns,
         )
         # 每处理完一条记录就保存结果（保持与原始代码一致）
-        self.excel_processor.save_intermediate_results(output_path, row_number)
+        excel_processor.save_intermediate_results(output_path, row_number)
 
     def _call_semantic_api(self, row_data: dict, doc_content: str) -> tuple[str, str]:
         """
@@ -442,19 +476,20 @@ class SemanticTestApp:
         error: Exception,
         result_columns: dict,
         output_path: str,
+        excel_processor: "ExcelProcessor",
     ):
         """
         处理处理过程中的错误
         """
         logger.error(f"处理第 {row_number} 行时发生错误: {error}")
-        self.excel_processor.save_result(
+        excel_processor.save_result(
             row_index=row_index,
             result="错误",
             reason=f"处理异常: {str(error)}",
             result_columns=result_columns,
         )
         # 每处理完一条记录就保存结果（保持与原始代码一致）
-        self.excel_processor.save_intermediate_results(output_path, row_number)
+        excel_processor.save_intermediate_results(output_path, row_number)
 
     def _read_document_content(
         self, knowledge_base_dir: str, doc_name: str
@@ -494,12 +529,12 @@ class SemanticTestApp:
         """运行菜单模式"""
         from semantic_tester.ui.menu import MenuHandler
 
-        while True:
-            # 使用简洁菜单显示
-            LoggerUtils.print_simple_menu()
+        menu_handler = MenuHandler()
 
+        while True:
             try:
-                choice = input("请输入选项 (1-5): ").strip()
+                # 使用菜单处理器获取用户选择
+                choice = menu_handler.show_main_menu()
             except (EOFError, KeyboardInterrupt):
                 print("\n👋 感谢使用 AI语义分析工具！")
                 break
@@ -509,14 +544,11 @@ class SemanticTestApp:
                 self.run_interactive_mode()
             elif choice == "2":
                 # 查看使用说明
-                self._show_help_menu(MenuHandler())
+                self._show_help_menu(menu_handler)
             elif choice == "3":
-                # 配置设置
-                self._show_config_menu(MenuHandler())
-            elif choice == "4":
                 # AI供应商管理
-                self._show_provider_management_menu(MenuHandler())
-            elif choice == "5":
+                self._show_provider_management_menu(menu_handler)
+            elif choice == "4":
                 # 退出程序
                 LoggerUtils.console_print("👋 感谢使用 AI语义分析工具！", "SUCCESS")
                 break
@@ -539,37 +571,7 @@ class SemanticTestApp:
             elif choice == "5":
                 break
 
-    def _show_config_menu(self, menu_handler):
-        """显示配置菜单"""
-        while True:
-            choice = menu_handler.show_config_menu()
-
-            if choice == "1":
-                # 查看 API 密钥配置
-                self.env_manager.print_env_status()
-                print(f"API 密钥预览: {self.env_manager.get_api_keys_preview()}")
-            elif choice == "2":
-                # 配置默认知识库目录
-                if self.config.update_from_user_input(
-                    "default_knowledge_base_dir", "请输入默认知识库目录路径"
-                ):
-                    self.config.save_settings()
-                    print("配置已保存")
-            elif choice == "3":
-                # 配置默认输出目录
-                if self.config.update_from_user_input(
-                    "default_output_dir", "请输入默认输出目录路径"
-                ):
-                    self.config.save_settings()
-                    print("配置已保存")
-            elif choice == "4":
-                # 重置配置
-                if menu_handler.confirm_action("确定要重置所有配置吗？"):
-                    self.config.reset_to_defaults()
-                    self.config.save_settings()
-                    print("配置已重置")
-            elif choice == "5":
-                break
+    
 
     def _show_provider_management_menu(self, menu_handler):
         """显示AI供应商管理菜单"""
@@ -671,6 +673,18 @@ class SemanticTestApp:
 
             print(f"{i}. {provider_name}{current_marker} - {status}")
 
+    def _get_provider_manager_or_error(self) -> Optional["ProviderManager"]:
+        """
+        获取供应商管理器或返回None
+
+        Returns:
+            ProviderManager or None: 供应商管理器实例
+        """
+        if not self.provider_manager:
+            logger.error("供应商管理器未初始化")
+            return None
+        return self.provider_manager
+
     def _get_provider_selection(self, providers: list):
         """
         获取用户选择的供应商
@@ -678,6 +692,10 @@ class SemanticTestApp:
         Returns:
             Provider or None: 选择的供应商对象
         """
+        provider_manager = self._get_provider_manager_or_error()
+        if not provider_manager:
+            return None
+
         while True:
             try:
                 choice_input = input(
@@ -692,7 +710,7 @@ class SemanticTestApp:
                 if 1 <= choice_index <= len(providers):
                     selected_provider_info = providers[choice_index - 1]
                     selected_provider_id = selected_provider_info["id"]
-                    return self.provider_manager.get_provider(selected_provider_id)
+                    return provider_manager.get_provider(selected_provider_id)
                 else:
                     print(f"❌ 无效的选择，请输入 1-{len(providers)} 之间的数字")
             except ValueError:
@@ -708,7 +726,11 @@ class SemanticTestApp:
         Args:
             selected_provider: 要切换到的供应商
         """
-        if self.provider_manager.set_current_provider(selected_provider.id):
+        provider_manager = self._get_provider_manager_or_error()
+        if not provider_manager:
+            return
+
+        if provider_manager.set_current_provider(selected_provider.id):
             print(f"\n✅ 已切换到供应商: {selected_provider.name}")
 
             # 验证新供应商的API密钥
@@ -725,9 +747,13 @@ class SemanticTestApp:
         Args:
             provider: 要验证的供应商
         """
+        provider_manager = self._get_provider_manager_or_error()
+        if not provider_manager:
+            return
+
         if provider.is_configured():
             print("正在验证API密钥...")
-            is_valid = self.provider_manager._validate_provider_api_key(provider)
+            is_valid = provider_manager._validate_provider_api_key(provider)
             if is_valid:
                 print("✅ API密钥验证通过")
             else:
@@ -902,6 +928,11 @@ def _run_command_line_mode(app: SemanticTestApp):
     if not _validate_and_load_excel(app, excel_path):
         sys.exit(1)
 
+    # 确保excel_processor存在
+    if not app.excel_processor:
+        print("错误: Excel处理器未初始化")
+        sys.exit(1)
+
     # 获取知识库目录
     if not knowledge_base_dir:
         knowledge_base_dir = CLIInterface.get_knowledge_base_dir()
@@ -944,10 +975,15 @@ def _validate_and_load_excel(app: SemanticTestApp, excel_path: str) -> bool:
     Returns:
         bool: 成功返回True
     """
+    """
+    Returns:
+        bool: 成功返回True
+    """
     if not ValidationUtils.is_valid_file_path(excel_path, [".xlsx", ".xls"]):
         print(f"错误: 无效的 Excel 文件路径: {excel_path}")
         return False
 
+    # 设置 Excel 处理器
     app.excel_processor = ExcelProcessor(excel_path)
 
     if not app.excel_processor.load_excel():
@@ -971,6 +1007,10 @@ def _detect_and_handle_file_format(app: SemanticTestApp) -> dict:
     Returns:
         dict: 格式信息
     """
+    if not app.excel_processor:
+        print("错误: Excel处理器未初始化")
+        return {"is_dify_format": False}
+
     format_info = app.excel_processor.detect_format()
     app.excel_processor.display_format_info()
 
@@ -994,7 +1034,8 @@ def _setup_result_columns(app: SemanticTestApp) -> dict:
     }
 
     # 设置结果列
-    app.excel_processor.setup_result_columns(result_columns)
+    if app.excel_processor:
+        app.excel_processor.setup_result_columns(result_columns)
 
     return result_columns
 
@@ -1015,7 +1056,9 @@ def _get_output_path(app: SemanticTestApp, excel_path: str) -> str:
     return output_path
 
 
-def _display_processing_info(excel_path: str, knowledge_base_dir: str, output_path: str):
+def _display_processing_info(
+    excel_path: str, knowledge_base_dir: str, output_path: str
+):
     """显示处理信息"""
     print(f"\n📊 开始处理 Excel 文件: {excel_path}")
     print(f"📚 知识库目录: {knowledge_base_dir}")

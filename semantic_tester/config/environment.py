@@ -388,58 +388,85 @@ class EnvManager:
 
     def _log_template_summary(self):
         """记录所有供应商的模板值统计摘要"""
+        template_counts = {}
+
         # 统计Gemini模板值
-        gemini_template_count = 0
-        if hasattr(self, "gemini_api_keys"):
-            all_gemini_keys = []
-            gemini_api_keys_str = os.getenv(
-                "GEMINI_API_KEY"
-            ) or self.env_loader.get_str("GEMINI_API_KEY", "")
-            if gemini_api_keys_str:
-                all_gemini_keys = [
-                    key.strip()
-                    for key in re.split(r"[\s,]+", gemini_api_keys_str)
-                    if key.strip()
-                ]
+        gemini_api_keys_str = os.getenv(
+            "GEMINI_API_KEY"
+        ) or self.env_loader.get_str("GEMINI_API_KEY", "")
+        if gemini_api_keys_str:
+            all_gemini_keys = [
+                key.strip()
+                for key in re.split(r"[\s,]+", gemini_api_keys_str)
+                if key.strip()
+            ]
             valid_gemini_keys = [
                 key for key in all_gemini_keys if not self._is_template_value(key)
             ]
             gemini_template_count = len(all_gemini_keys) - len(valid_gemini_keys)
+            if gemini_template_count > 0:
+                template_counts["gemini"] = gemini_template_count
 
         # 统计其他供应商模板值
-        template_counts = {"gemini": gemini_template_count}
-
         # OpenAI
         openai_key = os.getenv("OPENAI_API_KEY") or self.env_loader.get_str(
             "OPENAI_API_KEY", ""
         )
-        if openai_key and self._is_template_value(openai_key):
-            template_counts["openai"] = 1
+        if openai_key:
+            openai_keys = [
+                key.strip() for key in re.split(r"[\s,]+", openai_key) if key.strip()
+            ]
+            openai_template_count = sum(
+                1 for key in openai_keys if self._is_template_value(key)
+            )
+            if openai_template_count > 0:
+                template_counts["openai"] = openai_template_count
 
         # Anthropic
         anthropic_key = os.getenv("ANTHROPIC_API_KEY") or self.env_loader.get_str(
             "ANTHROPIC_API_KEY", ""
         )
-        if anthropic_key and self._is_template_value(anthropic_key):
-            template_counts["anthropic"] = 1
+        if anthropic_key:
+            anthropic_keys = [
+                key.strip() for key in re.split(r"[\s,]+", anthropic_key) if key.strip()
+            ]
+            anthropic_template_count = sum(
+                1 for key in anthropic_keys if self._is_template_value(key)
+            )
+            if anthropic_template_count > 0:
+                template_counts["anthropic"] = anthropic_template_count
 
         # Dify
         dify_key = os.getenv("DIFY_API_KEY") or self.env_loader.get_str(
             "DIFY_API_KEY", ""
         )
-        if dify_key and self._is_template_value(dify_key):
-            template_counts["dify"] = 1
+        if dify_key:
+            dify_keys = [
+                key.strip() for key in re.split(r"[\s,]+", dify_key) if key.strip()
+            ]
+            dify_template_count = sum(
+                1 for key in dify_keys if self._is_template_value(key)
+            )
+            if dify_template_count > 0:
+                template_counts["dify"] = dify_template_count
 
         # iFlow
         iflow_key = os.getenv("IFLOW_API_KEY") or self.env_loader.get_str(
             "IFLOW_API_KEY", ""
         )
-        if iflow_key and self._is_template_value(iflow_key):
-            template_counts["iflow"] = 1
+        if iflow_key:
+            iflow_keys = [
+                key.strip() for key in re.split(r"[\s,]+", iflow_key) if key.strip()
+            ]
+            iflow_template_count = sum(
+                1 for key in iflow_keys if self._is_template_value(key)
+            )
+            if iflow_template_count > 0:
+                template_counts["iflow"] = iflow_template_count
 
         # 计算总数
         total_template_keys = sum(template_counts.values())
-        total_suppliers = len(template_counts)
+        total_suppliers = len(template_counts) if template_counts else 0
 
         # 记录摘要
         if total_template_keys > 0:

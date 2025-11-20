@@ -66,6 +66,19 @@ class DifyProvider(AIProvider):
 
         logger.info(f"Dify 供应商初始化完成: {self.base_url}")
 
+    def _initialize_api_keys(self):
+        """初始化 API 密钥列表"""
+        if not self.api_keys:
+            logger.warning("Dify API 密钥未配置")
+            return
+
+        current_time = time.time()
+        for key in self.api_keys:
+            self.key_last_used_time[key] = current_time
+            self.key_cooldown_until[key] = 0.0
+
+        logger.info(f"已初始化 {len(self.api_keys)} 个 Dify API 密钥")
+
     def get_models(self) -> List[str]:
         """获取可用的模型列表"""
         # Dify 使用应用 ID，不支持传统意义上的模型列表
@@ -86,7 +99,8 @@ class DifyProvider(AIProvider):
 
         try:
             # 发送一个简单的测试请求
-            url = f"{self.base_url}/chat-messages"
+            # 使用 conversations 端点而不是 chat-messages
+            url = f"{self.base_url}/conversations"
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -97,6 +111,10 @@ class DifyProvider(AIProvider):
                 "response_mode": "blocking",
                 "user": "validator",
             }
+
+            # 如果有 app_id，添加到 payload
+            if self.app_id:
+                payload["app_id"] = self.app_id
 
             response = requests.post(url, headers=headers, json=payload, timeout=10)
 
@@ -174,10 +192,13 @@ class DifyProvider(AIProvider):
             requests.exceptions.Timeout: 请求超时
             requests.exceptions.ConnectionError: 连接失败
         """
-        # 构建请求
-        url = f"{self.base_url}/chat-messages"
+        # 构建请求 - 使用 conversations 端点
+        url = f"{self.base_url}/conversations"
+        # 获取当前API密钥
+        current_key = self.api_keys[self.current_key_index] if self.api_keys else ""
+
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {current_key}",
             "Content-Type": "application/json",
         }
 

@@ -9,7 +9,6 @@ import time
 from typing import Any, Dict, List, Optional
 
 try:
-    import anthropic
     from anthropic.types import TextBlock
 except ImportError:
     TextBlock = None
@@ -83,11 +82,12 @@ class AnthropicProvider(AIProvider):
 
             client = anthropic.Anthropic(api_key=api_key, timeout=5)
             # 发送简单的测试请求
-            client.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=5,
-                messages=[{"role": "user", "content": "Hi"}],
-            )
+            if hasattr(client, 'messages') and hasattr(client.messages, 'create'):
+                client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=5,
+                    messages=[{"role": "user", "content": "Hi"}],
+                )
             return True
         except Exception:
             return False
@@ -161,18 +161,24 @@ class AnthropicProvider(AIProvider):
         try:
             import anthropic
 
+            # 获取当前API密钥
+            current_api_key = (
+                self.api_keys[self.current_key_index] if self.api_keys else ""
+            )
+
             client = anthropic.Anthropic(
-                api_key=self.api_key,
+                api_key=current_api_key,
                 base_url=self.base_url,
                 timeout=self.timeout,
             )
 
             # 发送简单的测试请求
-            client.messages.create(
-                model=self.default_model,
-                max_tokens=10,
-                messages=[{"role": "user", "content": "Hi"}],
-            )
+            if hasattr(client, 'messages') and hasattr(client.messages, 'create'):
+                client.messages.create(
+                    model=self.default_model,
+                    max_tokens=10,
+                    messages=[{"role": "user", "content": "Hi"}],
+                )
 
             return {
                 "success": True,
@@ -220,8 +226,13 @@ class AnthropicProvider(AIProvider):
         try:
             import anthropic
 
+            # 获取当前API密钥
+            current_api_key = (
+                self.api_keys[self.current_key_index] if self.api_keys else ""
+            )
+
             client = anthropic.Anthropic(
-                api_key=self.api_key,
+                api_key=current_api_key,
                 base_url=self.base_url,
                 timeout=self.timeout,
             )
@@ -231,19 +242,23 @@ class AnthropicProvider(AIProvider):
 
             # 调用 API
             start_time = time.time()
-            response = client.messages.create(
-                model=self.default_model,
-                max_tokens=1000,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            if hasattr(client, 'messages') and hasattr(client.messages, 'create'):
+                response = client.messages.create(
+                    model=self.default_model,
+                    max_tokens=1000,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            else:
+                raise Exception("客户端未正确初始化")
             response_time = time.time() - start_time
 
             # 解析响应 - 提取文本内容块
             text_content = ""
-            for content_block in response.content:
-                # 使用类型检查而不是hasattr，避免Pylance类型错误
-                if TextBlock is not None and isinstance(content_block, TextBlock):
-                    text_content += content_block.text
+            if hasattr(response, 'content'):
+                for content_block in response.content:
+                    # 使用类型检查而不是hasattr，避免Pylance类型错误
+                    if TextBlock is not None and isinstance(content_block, TextBlock):
+                        text_content += content_block.text
 
             if not text_content:
                 return {
@@ -394,17 +409,20 @@ class AnthropicProvider(AIProvider):
             self.client = None
             return
 
-        current_api_key = self.api_keys[self.current_key_index]
-        try:
-            self.client = anthropic.Anthropic(
-                api_key=current_api_key, base_url=self.base_url, timeout=self.timeout
-            )
-            logger.info(f"Anthropic API 已配置，使用密钥索引: {self.current_key_index}")
-            self.key_last_used_time[current_api_key] = time.time()
-        except Exception as e:
-            logger.error(f"Anthropic API 配置失败: {e}")
-            self.client = None
-            if self.api_keys:
+        if self.api_keys:
+            current_api_key = self.api_keys[self.current_key_index]
+            try:
+                import anthropic
+                self.client = anthropic.Anthropic(
+                    api_key=current_api_key,
+                    base_url=self.base_url,
+                    timeout=self.timeout,
+                )
+                logger.info(f"Anthropic API 已配置，使用密钥索引: {self.current_key_index}")
+                self.key_last_used_time[current_api_key] = time.time()
+            except Exception as e:
+                logger.error(f"Anthropic API 配置失败: {e}")
+                self.client = None
                 self._rotate_key(force_rotate=True)
 
     def _get_available_client(self):

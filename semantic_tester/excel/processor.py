@@ -7,7 +7,7 @@ Excel 处理器
 import logging
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import pandas as pd
 from colorama import Fore, Style
@@ -30,10 +30,10 @@ class ExcelProcessor:
         self.excel_path = excel_path
         self.df: Optional[pd.DataFrame] = None
         self.column_names: List[str] = []
-        self.workbook = None
-        self.worksheet = None
+        self.workbook: Optional[Any] = None
+        self.worksheet: Optional[Any] = None
         self.is_dify_format = False
-        self.format_info = {}
+        self.format_info: dict[str, Any] = {}
 
     def load_excel(self) -> bool:
         """
@@ -93,7 +93,7 @@ class ExcelProcessor:
             has_question_col and has_response_col and has_timestamp_col
         )
 
-        format_info = {
+        format_info: dict[str, Any] = {
             "is_dify_format": self.is_dify_format,
             "has_question_col": has_question_col,
             "has_response_col": has_response_col,
@@ -121,7 +121,7 @@ class ExcelProcessor:
                     response_cols.append(col)
 
             format_info["question_col"] = question_col
-            format_info["response_cols"] = response_cols
+            format_info["response_cols"] = response_cols or []
 
         self.format_info = format_info
         return format_info
@@ -138,9 +138,11 @@ class ExcelProcessor:
             )
             print("将自动适配列映射关系：")
             print(f"  • {self.format_info['question_col']} → 问题点")
-            print(
-                f"  • {self.format_info['response_cols'][0] if self.format_info['response_cols'] else '未知'} → AI客服回答"
+            response_col = (
+                self.format_info['response_cols'][0]
+                if self.format_info['response_cols'] else '未知'
             )
+            print(f"  • {response_col} → AI客服回答")
             print("  • 文档名称 → 需要手动指定")
 
     def auto_add_document_column(self):
@@ -173,12 +175,12 @@ class ExcelProcessor:
         # 手动配置列映射
         return self._manual_configure_columns()
 
-    def _auto_configure_columns(self) -> Dict[str, int]:
+    def _auto_configure_columns(self) -> Optional[Dict[str, int]]:
         """
         自动配置列映射（针对 dify 格式）
 
         Returns:
-            Dict[str, int] or None: 列索引映射，如果失败返回None
+            Optional[Dict[str, int]]: 列索引映射，如果失败返回None
         """
         doc_name_col_index = 0  # 文档名称列
         question_col_index = self.column_names.index(
@@ -206,12 +208,12 @@ class ExcelProcessor:
 
         return None
 
-    def _select_response_column(self) -> str:
+    def _select_response_column(self) -> Optional[str]:
         """
         选择响应列
 
         Returns:
-            str: 选择的列名或None
+            Optional[str]: 选择的列名或None
         """
         response_cols = self.format_info["response_cols"]
 
@@ -253,10 +255,16 @@ class ExcelProcessor:
         print("\n已配置列映射：")
         print(f"  • 文档名称: 列 {column_mapping['doc_name_col_index'] + 1} ('文档名称')")
         print(
-            f"  • 问题点: 列 {column_mapping['question_col_index'] + 1} ('{self.format_info['question_col']}')"
+            f"  • 问题点: 列 {column_mapping['question_col_index'] + 1} "
+            f"('{self.format_info['question_col']}')"
+        )
+        response_col_name = (
+            self.format_info['response_cols'][0]
+            if self.format_info['response_cols'] else '未知'
         )
         print(
-            f"  • AI客服回答: 列 {column_mapping['ai_answer_col_index'] + 1} ('{self.format_info['response_cols'][0] if self.format_info['response_cols'] else '未知'}')"
+            f"  • AI客服回答: 列 {column_mapping['ai_answer_col_index'] + 1} "
+            f"('{response_col_name}')"
         )
 
     def _confirm_auto_config(self) -> bool:

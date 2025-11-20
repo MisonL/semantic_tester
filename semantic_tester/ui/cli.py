@@ -7,7 +7,7 @@
 import logging
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 from colorama import Fore, Style
 
@@ -288,7 +288,7 @@ class CLIInterface:
         return [f for f in os.listdir(".") if f.endswith(".xlsx") and os.path.isfile(f)]
 
     @staticmethod
-    def _get_user_file_input(excel_files: list) -> str:
+    def _get_user_file_input(excel_files: list) -> Optional[str]:
         """
         获取用户输入的文件路径
 
@@ -317,7 +317,7 @@ class CLIInterface:
             print(f"{i + 1}. {file_name}")
 
     @staticmethod
-    def _parse_file_input(file_input: str, excel_files: list) -> str:
+    def _parse_file_input(file_input: str, excel_files: list) -> Optional[str]:
         """
         解析用户输入的文件选择
 

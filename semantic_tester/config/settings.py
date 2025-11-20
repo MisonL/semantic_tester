@@ -165,6 +165,7 @@ class Config:
         field_type = type(getattr(self.settings, key))
 
         try:
+            new_value: Any = None
             if field_type == bool:
                 new_value = user_input.lower() in ["y", "yes", "是", "true", "1"]
             elif field_type == int:
