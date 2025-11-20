@@ -548,7 +548,7 @@ def check_semantic_similarity(
                 duration = end_time - start_time  # 计算耗时
                 error_msg = str(e)
                 logger.warning(
-                    f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt+1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+                    f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
                 )  # 增加问题点信息
 
                 retry_after = default_retry_delay
@@ -624,7 +624,7 @@ def check_semantic_similarity(
                 duration = end_time - start_time  # 计算耗时
                 error_msg = str(e)
                 logger.error(
-                    f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt+1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+                    f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
                 )  # 增加问题点信息
                 logger.debug(
                     f"完整错误信息: {str(e)}", exc_info=True
@@ -655,9 +655,8 @@ def check_semantic_similarity(
     return "错误", "API调用多次重试失败"
 
 
-def main():
-    # API Keys 已在文件顶部加载到 GEMINI_API_KEYS 列表中
-
+def _check_api_keys():
+    """检查API密钥是否配置"""
     if not GEMINI_API_KEYS:
         logger.critical("错误：请设置 GEMINI_API_KEYS 环境变量。")
         logger.info("您可以通过以下命令设置（临时）：")
@@ -665,20 +664,17 @@ def main():
         logger.info("或者在您的.zshrc或.bashrc文件中设置（永久）。")
         sys.exit(1)  # 没有API密钥时退出程序
 
-    # 初始化Gemini API处理器
-    # 可以从环境变量或命令行参数获取模型名称和提示词，这里先硬编码
-    # 实际应用中可以考虑使用argparse或环境变量
+
+def _initialize_gemini_handler():
+    """初始化Gemini API处理器"""
     gemini_model_name = os.getenv(
         "GEMINI_MODEL", "models/gemini-2.5-flash"
     )  # 默认模型名称
-    # semantic_tester 的提示词是固定的，不需要从环境变量获取
-    # gemini_prompt_template = os.getenv("PROMPT", "...") # semantic_tester 不需要可配置的提示词模板
 
-    # semantic_tester 的提示词是固定的，直接在 GeminiAPIHandler 中构建
     gemini_api_handler = GeminiAPIHandler(
         api_keys=GEMINI_API_KEYS,
         model_name=gemini_model_name,
-        prompt_template="",  # semantic_tester 的提示词在 get_prompt 方法中构建，这里可以为空
+        prompt_template="",  # semantic_tester 的提示词在 get_prompt 方法中构建
     )
 
     # 检查handler是否成功初始化（至少有一个有效密钥）
@@ -688,57 +684,81 @@ def main():
         )
         sys.exit(1)
 
-    print("\n--- AI客服问答语义比对工具 ---")
+    return gemini_api_handler
 
-    # --- 获取 Excel 文件路径 ---
+
+def _get_excel_file_path():
+    """获取Excel文件路径"""
     excel_files = [
         f for f in os.listdir(".") if f.endswith(".xlsx") and os.path.isfile(f)
     ]
+
+    excel_path = _select_excel_file(excel_files)
+    df = _read_excel_file(excel_path)
+    return excel_path, df
+
+
+def _select_excel_file(excel_files):
+    """选择Excel文件"""
     while True:
         if excel_files:
             print("\n当前目录下的 Excel 文件:")
             for i, file_name in enumerate(excel_files):
-                print(f"{i+1}. {file_name}")
+                print(f"{i + 1}. {file_name}")
             file_input = input("请输入 Excel 文件序号或直接输入文件路径: ")
-            try:
-                file_index = int(file_input)
-                if 1 <= file_index <= len(excel_files):
-                    excel_path = excel_files[file_index - 1]
-                else:
-                    print(
-                        f"错误: 无效的文件序号 '{file_index}'。请重新输入。",
-                        file=sys.stderr,
-                    )
-                    continue
-            except ValueError:  # 用户输入的是路径
-                excel_path = file_input
+            excel_path = _parse_file_input(file_input, excel_files)
         else:
             excel_path = input(
                 "当前目录下没有找到 Excel 文件。请输入包含问答内容的 Excel 文件路径: "
             )
 
-        if not os.path.exists(excel_path):
-            print(f"错误: 文件 '{excel_path}' 不存在。请重新输入。", file=sys.stderr)
-            continue
+        if os.path.exists(excel_path):
+            return excel_path
+        print(f"错误: 文件 '{excel_path}' 不存在。请重新输入。", file=sys.stderr)
+
+
+def _parse_file_input(file_input, excel_files):
+    """解析用户输入的文件选择"""
+    try:
+        file_index = int(file_input)
+        if 1 <= file_index <= len(excel_files):
+            return excel_files[file_index - 1]
+        else:
+            print(f"错误: 无效的文件序号 '{file_index}'。请重新输入.", file=sys.stderr)
+            return _select_excel_file(excel_files)
+    except ValueError:  # 用户输入的是路径
+        return file_input
+
+
+def _read_excel_file(excel_path):
+    """读取Excel文件"""
+    while True:
         try:
             # 使用 pandas 读取 Excel 文件以获取 DataFrame，指定引擎
             try:
                 df = pd.read_excel(excel_path, engine="openpyxl")
-            except:
+            except Exception:
                 df = pd.read_excel(excel_path, engine="xlrd")
 
             logger.info(f"正在读取Excel文件：{excel_path}")
             logger.info(f"Excel文件读取成功，共 {len(df)} 行 {len(df.columns)} 列。")
             logger.info(f"列名: {list(df.columns)}")
-            break  # 成功读取文件，跳出循环
+            return df
         except Exception as e:
             print(
                 f"错误: 无法读取 Excel 文件 '{excel_path}'。请确保文件格式正确且未被占用。错误信息: {e}。请重新输入。",
                 file=sys.stderr,
             )
-            continue
+            excel_path = input("请重新输入Excel文件路径: ")
+            if not os.path.exists(excel_path):
+                excel_files = [
+                    f for f in os.listdir(".") if f.endswith(".xlsx") and os.path.isfile(f)
+                ]
+                excel_path = _select_excel_file(excel_files)
 
-    # --- 获取知识库目录路径 ---
+
+def _get_knowledge_base_dir():
+    """获取知识库目录路径"""
     while True:
         knowledge_base_dir = input(
             "请输入知识库文档目录路径 (例如: '处理后/' 或 '/path/to/knowledge_base/'): "
@@ -752,162 +772,292 @@ def main():
                 file=sys.stderr,
             )
             continue
-        break
+        return knowledge_base_dir
 
-    # --- 智能格式检测和适配 ---
-    column_names = [str(col) for col in df.columns]  # 获取所有列名并转换为字符串
-    print("\nExcel 文件中的列名:")
-    for i, col_name in enumerate(column_names):
-        print(f"{i+1}. {col_name}")
 
-    # 检测是否为 dify_chat_tester 输出格式
-    # 检查必需的核心列
+def _detect_dify_format(column_names):
+    """检测是否为dify格式"""
     has_question_col = any(
         col in column_names for col in ["原始问题", "用户输入", "问题"]
     )
     has_response_col = any(col.endswith("响应") for col in column_names)
     has_timestamp_col = any(col in column_names for col in ["时间戳", "Timestamp"])
-    # 综合判断是否为dify格式
-    is_dify_format = has_question_col and has_response_col and has_timestamp_col
 
+    return has_question_col and has_response_col and has_timestamp_col
+
+
+def _handle_dify_format(column_names):
+    """处理dify格式的列配置"""
+    question_col = _find_question_column(column_names)
+    response_cols = _find_response_columns(column_names, question_col)
+
+    if not response_cols:
+        print(f"{Fore.RED}❌ 未找到任何响应列！{Style.RESET_ALL}")
+        return None, None
+
+    response_col = _select_response_column(response_cols)
+    return question_col, response_col
+
+
+def _find_question_column(column_names):
+    """查找问题列"""
+    for col in ["原始问题", "用户输入", "问题"]:
+        if col in column_names:
+            return col
+    return None
+
+
+def _find_response_columns(column_names, question_col):
+    """查找响应列"""
+    return [col for col in column_names if col.endswith("响应") and col != question_col]
+
+
+def _select_response_column(response_cols):
+    """选择响应列"""
+    if len(response_cols) == 1:
+        return response_cols[0]
+
+    print(f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}")
+    for i, col in enumerate(response_cols):
+        print(f"  {i + 1}. {col}")
+
+    while True:
+        choice = input(f"请输入选择 (1-{len(response_cols)}, 默认: 1): ").strip()
+        if not choice:
+            choice = "1"
+
+        try:
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(response_cols):
+                return response_cols[choice_idx]
+            print(f"选择无效，请输入 1-{len(response_cols)} 之间的数字。")
+        except ValueError:
+            print("请输入有效的数字。")
+
+
+def _configure_dify_columns(df, column_names, question_col, response_col):
+    """配置dify格式的列"""
+    print(f"\n{Fore.GREEN}✅ 检测到 Dify Chat Tester 输出格式！{Style.RESET_ALL}")
+    print("将自动适配列映射关系：")
+    print(f"  • {question_col} → 问题点")
+    print(f"  • {response_col} → AI客服回答")
+    print("  • 文档名称 → 需要手动指定")
+
+    # 自动添加文档名称列
+    if "文档名称" not in column_names:
+        df.insert(0, "文档名称", "")  # 在第一列插入文档名称列
+        column_names.insert(0, "文档名称")
+        print(
+            f"\n{Fore.YELLOW}📝 已自动添加'文档名称'列，请稍后手动填写对应的文档名。{Style.RESET_ALL}"
+        )
+
+    # 设置默认列映射
+    doc_name_col_index = 0  # 文档名称列
+    question_col_index = column_names.index(question_col)
+    ai_answer_col_index = column_names.index(response_col)
+
+    print("\n已配置列映射：")
+    print(f"  • 文档名称: 列 {doc_name_col_index + 1} ('文档名称')")
+    print(f"  • 问题点: 列 {question_col_index + 1} ('{question_col}')")
+    print(f"  • AI客服回答: 列 {ai_answer_col_index + 1} ('{response_col}')")
+
+    # 询问是否使用自动配置
+    use_auto_config = input(
+        f"\n{Fore.CYAN}是否使用此自动配置？(Y/n，默认: Y): {Style.RESET_ALL}"
+    ).strip()
+
+    return use_auto_config.lower() != "n", {
+        "doc_name_col_index": doc_name_col_index,
+        "question_col_index": question_col_index,
+        "ai_answer_col_index": ai_answer_col_index,
+    }
+
+
+def _configure_columns_manually(column_names):
+    """手动配置列"""
+    doc_name_col_index = _get_column_input(column_names, "文档名称")
+    question_col_index = _get_column_input(column_names, "问题点")
+    ai_answer_col_index = _get_column_input(column_names, "AI客服回答")
+
+    return {
+        "doc_name_col_index": doc_name_col_index,
+        "question_col_index": question_col_index,
+        "ai_answer_col_index": ai_answer_col_index,
+    }
+
+
+def _get_column_input(column_names, col_description):
+    """获取用户输入的列索引"""
+    col_input = input(f'请输入"{col_description}"所在列的名称或序号: ')
+    col_index = get_column_index(column_names, col_input)
+    if col_index == -1:
+        logger.error(
+            f"错误: 未找到列名为 '{col_input}' 的'{col_description}'列。程序退出。"
+        )
+        sys.exit(1)
+    return col_index
+
+
+def _configure_columns(df, column_names, is_dify_format):
+    """配置列映射"""
     if is_dify_format:
-        # 找到问题列和响应列
-        question_col = None
-        response_col = None
-
-        # 确定问题列
-        for col in ["原始问题", "用户输入", "问题"]:
-            if col in column_names:
-                question_col = col
-                break
-
-        # 确定响应列（以"响应"结尾的列）
-        response_cols = []
-        for col in column_names:
-            if col.endswith("响应") and col != question_col:
-                response_cols.append(col)
-
-        # 如果有多个响应列，让用户选择
-        if len(response_cols) > 1:
-            print(
-                f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}"
+        question_col, response_col = _handle_dify_format(column_names)
+        if question_col and response_col:
+            use_auto_config, col_indices = _configure_dify_columns(
+                df, column_names, question_col, response_col
             )
-            for i, col in enumerate(response_cols):
-                print(f"  {i+1}. {col}")
-
-            while True:
-                choice = input(
-                    f"请输入选择 (1-{len(response_cols)}, 默认: 1): "
-                ).strip()
-                if not choice:
-                    choice = "1"
-
-                try:
-                    choice_idx = int(choice) - 1
-                    if 0 <= choice_idx < len(response_cols):
-                        response_col = response_cols[choice_idx]
-                        break
-                    else:
-                        print(f"选择无效，请输入 1-{len(response_cols)} 之间的数字。")
-                except ValueError:
-                    print("请输入有效的数字。")
-        elif len(response_cols) == 1:
-            response_col = response_cols[0]
-        else:
-            print(f"{Fore.RED}❌ 未找到任何响应列！{Style.RESET_ALL}")
-            is_dify_format = False
-
-    if is_dify_format:
-        print(f"\n{Fore.GREEN}✅ 检测到 Dify Chat Tester 输出格式！{Style.RESET_ALL}")
-        print("将自动适配列映射关系：")
-        print(f"  • {question_col} → 问题点")
-        print(f"  • {response_col} → AI客服回答")
-        print("  • 文档名称 → 需要手动指定")
-
-        # 自动添加文档名称列
-        if "文档名称" not in column_names:
-            df.insert(0, "文档名称", "")  # 在第一列插入文档名称列
-            column_names.insert(0, "文档名称")
-            print(
-                f"\n{Fore.YELLOW}📝 已自动添加'文档名称'列，请稍后手动填写对应的文档名。{Style.RESET_ALL}"
-            )
-
-        # 设置默认列映射
-        doc_name_col_index = 0  # 文档名称列
-        question_col_index = column_names.index(question_col)
-        ai_answer_col_index = column_names.index(response_col)
-
-        print("\n已配置列映射：")
-        print(f"  • 文档名称: 列 {doc_name_col_index + 1} ('文档名称')")
-        print(f"  • 问题点: 列 {question_col_index + 1} ('{question_col}')")
-        print(f"  • AI客服回答: 列 {ai_answer_col_index + 1} ('{response_col}')")
-
-        # 询问是否使用自动配置
-        use_auto_config = input(
-            f"\n{Fore.CYAN}是否使用此自动配置？(Y/n，默认: Y): {Style.RESET_ALL}"
-        ).lower()
-        if use_auto_config != "n":
-            # 跳过手动列配置，直接设置结果保存列
-            goto_result_columns = True
-        else:
-            goto_result_columns = False
+            if not use_auto_config:
+                return _configure_columns_manually(column_names)
+            return col_indices
+        return None
     else:
-        goto_result_columns = False
+        return _configure_columns_manually(column_names)
 
-    if not goto_result_columns:
-        # --- 获取"文档名称"列 ---
-        doc_name_col_input = input(
-            '请输入"文档名称"所在列的名称或序号 (例如: "文档名称" 或 "1"): '
-        )
-        doc_name_col_index = get_column_index(column_names, doc_name_col_input)
-        if doc_name_col_index == -1:
-            logger.error(
-                f"错误: 未找到列名为 '{doc_name_col_input}' 的'文档名称'列。程序退出。"
-            )
-            sys.exit(1)
 
-        # --- 获取"问题点"列 ---
-        question_col_input = input(
-            '请输入"问题点"所在列的名称或序号 (例如: "问题点" 或 "2"): '
-        )
-        question_col_index = get_column_index(column_names, question_col_input)
-        if question_col_index == -1:
-            logger.error(
-                f"错误: 未找到列名为 '{question_col_input}' 的'问题点'列。程序退出。"
-            )
-            sys.exit(1)
+def main():
+    # 检查API密钥
+    _check_api_keys()
 
-        # --- 获取"AI客服回答"列 ---
-        ai_answer_col_input = input(
-            '请输入"AI客服回答"所在列的名称或序号 (例如: "AI客服回答" 或 "3"): '
-        )
-        ai_answer_col_index = get_column_index(column_names, ai_answer_col_input)
-        if ai_answer_col_index == -1:
-            logger.error(
-                f"错误: 未找到列名为 '{ai_answer_col_input}' 的'AI客服回答'列。程序退出。"
-            )
-            sys.exit(1)
+    # 初始化Gemini API处理器
+    gemini_api_handler = _initialize_gemini_handler()
 
-    # --- 获取“语义是否与源文档相符”结果保存列 ---
-    print("\n请选择“语义是否与源文档相符”结果保存列:")
-    print("现有列名:")
+    print("\n--- AI客服问答语义比对工具 ---")
+
+    # --- 获取 Excel 文件路径 ---
+    excel_path, df = _get_excel_file_path()
+
+    # --- 获取知识库目录路径 ---
+    knowledge_base_dir = _get_knowledge_base_dir()
+
+    # --- 智能格式检测和适配 ---
+    column_names = [str(col) for col in df.columns]  # 获取所有列名并转换为字符串
+    print("\nExcel 文件中的列名:")
     for i, col_name in enumerate(column_names):
-        print(f"{i+1}. {col_name}")
+        print(f"{i + 1}. {col_name}")
+
+    # 检测是否为 dify_chat_tester 输出格式
+    is_dify_format = _detect_dify_format(column_names)
+
+    # 配置列映射
+    col_indices = _configure_columns(df, column_names, is_dify_format)
+
+    # --- 询问是否在控制台显示每个问题的比对结果 ---
+    show_comparison_result = input(
+        "是否在控制台显示每个问题的比对结果？(Y/n，默认: n): "
+    ).strip()
+    show_comparison_result = show_comparison_result.lower() != "n"
+
+    # --- 获取结果保存列 ---
+    similarity_result_col_input = (
+        input(
+            "请输入要保存'语义是否与源文档相符'结果的列名或序号 (例如: '语义是否与源文档相符' 或直接输入新列名，默认: '语义是否与源文档相符'): "
+        )
+        or "语义是否与源文档相符"
+    )
+    similarity_result_col_index = get_or_add_column(
+        df, column_names, similarity_result_col_input
+    )
+
+    # --- 获取"判断依据"结果保存列 ---
+    reason_col_input = (
+        input(
+            "请输入要保存'判断依据'结果的列名或序号 (例如: '判断依据' 或直接输入新列名，默认: '判断依据'): "
+        )
+        or "判断依据"
+    )
+    reason_col_index = get_or_add_column(df, column_names, reason_col_input)
+
+    # --- 开始批量处理 ---
+    print("\n开始处理数据...")
+    print("=" * 60)
+    print(f"Excel 文件: {excel_path}")
+    print(f"知识库目录: {knowledge_base_dir}")
+    print("=" * 60)
+
+    # 使用 Gemini API 进行语义比对
+    for idx, row in df.iterrows():
+        try:
+            doc_name_col_index = col_indices["doc_name_col_index"]
+            question_col_index = col_indices["question_col_index"]
+            ai_answer_col_index = col_indices["ai_answer_col_index"]
+            
+            doc_name = (
+                str(row.iloc[doc_name_col_index]).strip()
+                if pd.notna(row.iloc[doc_name_col_index])
+                else "未知文档"
+            )
+            question = (
+                str(row.iloc[question_col_index]).strip()
+                if pd.notna(row.iloc[question_col_index])
+                else ""
+            )
+            ai_answer = (
+                str(row.iloc[ai_answer_col_index]).strip()
+                if pd.notna(row.iloc[ai_answer_col_index])
+                else ""
+            )
+
+            # 检查是否有文档名称
+            if not doc_name or pd.isna(doc_name):
+                logger.warning(f"第 {idx + 1} 行: 文档名称为空，跳过处理。")
+                continue
+
+            # 查找知识库文档
+            doc_path = os.path.join(knowledge_base_dir, f"{doc_name}.md")
+            if not os.path.exists(doc_path):
+                logger.warning(
+                    f"第 {idx + 1} 行: 未找到知识库文档 '{doc_path}'，跳过处理。"
+                )
+                continue
+
+            # 读取知识库内容
+            with open(doc_path, "r", encoding="utf-8") as f:
+                source_content = f.read()
+
+            # 使用 Gemini API 进行语义比对
+            similarity_result, reason = check_semantic_similarity(
+                question, ai_answer, source_content, gemini_api_handler
+            )
+
+            # 保存结果到DataFrame
+            df.at[idx, similarity_result_col_index] = similarity_result
+            df.at[idx, reason_col_index] = reason
+
+            # 显示进度
+            if show_comparison_result:
+                print(f"\n--- 第 {idx + 1} 条 ---")
+                print(f"文档名称: {doc_name}")
+                print(f"问题点: {question}")
+                print(f"AI客服回答: {ai_answer}")
+                print(f"比对结果: {similarity_result}")
+                print(f"判断依据: {reason}")
+                print("-" * 60)
+
+            # 显示进度
+            if (idx + 1) % 10 == 0 or (idx + 1) == len(df):
+                print(f"已处理 {idx + 1}/{len(df)} 条数据...")
+
+        except Exception as e:
+            logger.error(f"处理第 {idx + 1} 条数据时发生错误: {e}")
+            continue
+
+    # 保存处理结果到新的Excel文件
+    output_path = excel_path.replace(".xlsx", "_处理后.xlsx")
+    df.to_excel(output_path, index=False)
+    print(f"\n处理完成！结果已保存到: {output_path}")
     similarity_result_col_input = (
         input(
             "请输入要保存结果的列名或序号 (例如: '语义是否与源文档相符' 或直接输入新列名，默认: '语义是否与源文档相符'): "
         )
         or "语义是否与源文档相符"
     )
-    get_or_add_column(
-        df, column_names, similarity_result_col_input
-    )
+    get_or_add_column(df, column_names, similarity_result_col_input)
 
     # --- 获取“判断依据”结果保存列 ---
     print("\n请选择“判断依据”结果保存列:")
     print("现有列名:")
     for i, col_name in enumerate(column_names):
-        print(f"{i+1}. {col_name}")
+        print(f"{i + 1}. {col_name}")
     reason_col_input = (
         input(
             "请输入要保存结果的列名或序号 (例如: '判断依据' 或直接输入新列名，默认: '判断依据'): "

@@ -443,7 +443,7 @@ def check_semantic_similarity(
                 duration = end_time - start_time  # 计算耗时
                 error_msg = str(e)
                 logger.warning(
-                    f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt+1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+                    f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
                 )
 
                 retry_after = default_retry_delay
@@ -519,7 +519,7 @@ def check_semantic_similarity(
                 duration = end_time - start_time  # 计算耗时
                 error_msg = str(e)
                 logger.error(
-                    f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt+1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+                    f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
                 )
                 logger.debug(
                     f"完整错误信息: {str(e)}", exc_info=True

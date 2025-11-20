@@ -222,7 +222,7 @@ class CLIInterface:
             if excel_files:
                 print("\n当前目录下的 Excel 文件:")
                 for i, file_name in enumerate(excel_files):
-                    print(f"{i+1}. {file_name}")
+                    print(f"{i + 1}. {file_name}")
                 file_input = input("请输入 Excel 文件序号或直接输入文件路径: ")
                 try:
                     file_index = int(file_input)
@@ -341,7 +341,7 @@ class CLIInterface:
         """
         print(f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}")
         for i, col in enumerate(response_cols):
-            print(f"  {i+1}. {col}")
+            print(f"  {i + 1}. {col}")
 
         while True:
             choice = input(f"请输入选择 (1-{len(response_cols)}, 默认: 1): ").strip()

@@ -107,7 +107,7 @@ class ValidationUtils:
                 errors.append(f"列索引必须是整数: {key}")
             elif index < 0 or index >= total_columns:
                 errors.append(
-                    f"列索引超出范围: {key} = {index} (范围: 0-{total_columns-1})"
+                    f"列索引超出范围: {key} = {index} (范围: 0-{total_columns - 1})"
                 )
 
         # 检查是否有重复的列索引

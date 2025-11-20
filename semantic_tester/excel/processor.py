@@ -130,7 +130,7 @@ class ExcelProcessor:
         """显示格式检测结果"""
         print("\nExcel 文件中的列名:")
         for i, col_name in enumerate(self.column_names):
-            print(f"{i+1}. {col_name}")
+            print(f"{i + 1}. {col_name}")
 
         if self.is_dify_format:
             print(
@@ -179,7 +179,7 @@ class ExcelProcessor:
                     f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}"
                 )
                 for i, col in enumerate(response_cols):
-                    print(f"  {i+1}. {col}")
+                    print(f"  {i + 1}. {col}")
 
                 while True:
                     choice = input(
@@ -282,7 +282,7 @@ class ExcelProcessor:
         print("\n请选择'语义是否与源文档相符'结果保存列:")
         print("现有列名:")
         for i, col_name in enumerate(self.column_names):
-            print(f"{i+1}. {col_name}")
+            print(f"{i + 1}. {col_name}")
         similarity_result_col_input = (
             input(
                 "请输入要保存结果的列名或序号 (例如: '语义是否与源文档相符' 或直接输入新列名，默认: '语义是否与源文档相符'): "
@@ -297,7 +297,7 @@ class ExcelProcessor:
         print("\n请选择'判断依据'结果保存列:")
         print("现有列名:")
         for i, col_name in enumerate(self.column_names):
-            print(f"{i+1}. {col_name}")
+            print(f"{i + 1}. {col_name}")
         reason_col_input = (
             input(
                 "请输入要保存结果的列名或序号 (例如: '判断依据' 或直接输入新列名，默认: '判断依据'): "
