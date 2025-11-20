@@ -601,10 +601,15 @@ def main():
             print(f"错误: 文件 '{excel_path}' 不存在。请重新输入。", file=sys.stderr)
             continue
         try:
-            # 使用 pandas 读取 Excel 文件以获取 DataFrame
-            df = pd.read_excel(excel_path)
+            # 使用 pandas 读取 Excel 文件以获取 DataFrame，指定引擎
+            try:
+                df = pd.read_excel(excel_path, engine='openpyxl')
+            except:
+                df = pd.read_excel(excel_path, engine='xlrd')
+
             logger.info(f"正在读取Excel文件：{excel_path}")
-            logger.info("Excel文件读取成功。")
+            logger.info(f"Excel文件读取成功，共 {len(df)} 行 {len(df.columns)} 列。")
+            logger.info(f"列名: {list(df.columns)}")
             selected_excel_file = excel_path
             break # 成功读取文件，跳出循环
         except Exception as e:
@@ -622,32 +627,119 @@ def main():
             continue
         break
 
-    # --- 获取列名 ---
+    # --- 智能格式检测和适配 ---
     column_names = [str(col) for col in df.columns] # 获取所有列名并转换为字符串
     print("\nExcel 文件中的列名:")
     for i, col_name in enumerate(column_names):
         print(f"{i+1}. {col_name}")
 
-    # --- 获取“文档名称”列 ---
-    doc_name_col_input = input("请输入“文档名称”所在列的名称或序号 (例如: '文档名称' 或 '1'): ")
-    doc_name_col_index = get_column_index(column_names, doc_name_col_input)
-    if doc_name_col_index == -1:
-        logger.error(f"错误: 未找到列名为 '{doc_name_col_input}' 的“文档名称”列。程序退出。")
-        sys.exit(1)
+    # 检测是否为 dify_chat_tester 输出格式
+    # 检查必需的核心列
+    has_question_col = any(col in column_names for col in ['原始问题', '用户输入', '问题'])
+    has_response_col = any(col.endswith('响应') for col in column_names)
+    has_timestamp_col = any(col in column_names for col in ['时间戳', 'Timestamp'])
+    has_success_col = any(col in column_names for col in ['是否成功', '成功', 'Success'])
 
-    # --- 获取“问题点”列 ---
-    question_col_input = input("请输入“问题点”所在列的名称或序号 (例如: '问题点' 或 '2'): ")
-    question_col_index = get_column_index(column_names, question_col_input)
-    if question_col_index == -1:
-        logger.error(f"错误: 未找到列名为 '{question_col_input}' 的“问题点”列。程序退出。")
-        sys.exit(1)
+    # 综合判断是否为dify格式
+    is_dify_format = has_question_col and has_response_col and has_timestamp_col
 
-    # --- 获取“AI客服回答”列 ---
-    ai_answer_col_input = input("请输入“AI客服回答”所在列的名称或序号 (例如: 'AI客服回答' 或 '3'): ")
-    ai_answer_col_index = get_column_index(column_names, ai_answer_col_input)
-    if ai_answer_col_index == -1:
-        logger.error(f"错误: 未找到列名为 '{ai_answer_col_input}' 的“AI客服回答”列。程序退出。")
-        sys.exit(1)
+    if is_dify_format:
+        # 找到问题列和响应列
+        question_col = None
+        response_col = None
+
+        # 确定问题列
+        for col in ['原始问题', '用户输入', '问题']:
+            if col in column_names:
+                question_col = col
+                break
+
+        # 确定响应列（以"响应"结尾的列）
+        response_cols = []
+        for col in column_names:
+            if col.endswith('响应') and col != question_col:
+                response_cols.append(col)
+
+        # 如果有多个响应列，让用户选择
+        if len(response_cols) > 1:
+            print(f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}")
+            for i, col in enumerate(response_cols):
+                print(f"  {i+1}. {col}")
+
+            while True:
+                choice = input(f"请输入选择 (1-{len(response_cols)}, 默认: 1): ").strip()
+                if not choice:
+                    choice = "1"
+
+                try:
+                    choice_idx = int(choice) - 1
+                    if 0 <= choice_idx < len(response_cols):
+                        response_col = response_cols[choice_idx]
+                        break
+                    else:
+                        print(f"选择无效，请输入 1-{len(response_cols)} 之间的数字。")
+                except ValueError:
+                    print(f"请输入有效的数字。")
+        elif len(response_cols) == 1:
+            response_col = response_cols[0]
+        else:
+            print(f"{Fore.RED}❌ 未找到任何响应列！{Style.RESET_ALL}")
+            is_dify_format = False
+
+    if is_dify_format:
+        print(f"\n{Fore.GREEN}✅ 检测到 Dify Chat Tester 输出格式！{Style.RESET_ALL}")
+        print("将自动适配列映射关系：")
+        print(f"  • {question_col} → 问题点")
+        print(f"  • {response_col} → AI客服回答")
+        print("  • 文档名称 → 需要手动指定")
+
+        # 自动添加文档名称列
+        if '文档名称' not in column_names:
+            df.insert(0, '文档名称', '')  # 在第一列插入文档名称列
+            column_names.insert(0, '文档名称')
+            print(f"\n{Fore.YELLOW}📝 已自动添加'文档名称'列，请稍后手动填写对应的文档名。{Style.RESET_ALL}")
+
+        # 设置默认列映射
+        doc_name_col_index = 0  # 文档名称列
+        question_col_index = column_names.index(question_col)
+        ai_answer_col_index = column_names.index(response_col)
+
+        print(f"\n已配置列映射：")
+        print(f"  • 文档名称: 列 {doc_name_col_index + 1} ('文档名称')")
+        print(f"  • 问题点: 列 {question_col_index + 1} ('{question_col}')")
+        print(f"  • AI客服回答: 列 {ai_answer_col_index + 1} ('{response_col}')")
+
+        # 询问是否使用自动配置
+        use_auto_config = input(f"\n{Fore.CYAN}是否使用此自动配置？(Y/n，默认: Y): {Style.RESET_ALL}").lower()
+        if use_auto_config != 'n':
+            # 跳过手动列配置，直接设置结果保存列
+            goto_result_columns = True
+        else:
+            goto_result_columns = False
+    else:
+        goto_result_columns = False
+
+    if not goto_result_columns:
+        # --- 获取"文档名称"列 ---
+        doc_name_col_input = input('请输入"文档名称"所在列的名称或序号 (例如: "文档名称" 或 "1"): ')
+        doc_name_col_index = get_column_index(column_names, doc_name_col_input)
+        if doc_name_col_index == -1:
+            logger.error(f"错误: 未找到列名为 '{doc_name_col_input}' 的'文档名称'列。程序退出。")
+            sys.exit(1)
+
+        # --- 获取"问题点"列 ---
+        question_col_input = input('请输入"问题点"所在列的名称或序号 (例如: "问题点" 或 "2"): ')
+        question_col_index = get_column_index(column_names, question_col_input)
+        if question_col_index == -1:
+            logger.error(f"错误: 未找到列名为 '{question_col_input}' 的'问题点'列。程序退出。")
+            sys.exit(1)
+
+        # --- 获取"AI客服回答"列 ---
+        ai_answer_col_input = input('请输入"AI客服回答"所在列的名称或序号 (例如: "AI客服回答" 或 "3"): ')
+        ai_answer_col_index = get_column_index(column_names, ai_answer_col_input)
+        if ai_answer_col_index == -1:
+            logger.error(f"错误: 未找到列名为 '{ai_answer_col_input}' 的'AI客服回答'列。程序退出。")
+            sys.exit(1)
 
     # --- 获取“语义是否与源文档相符”结果保存列 ---
     print("\n请选择“语义是否与源文档相符”结果保存列:")

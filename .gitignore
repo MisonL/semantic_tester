@@ -19,6 +19,14 @@ logs/
 
 # Excel output files
 *_评估结果.xlsx
+batch_query_log_*.xlsx
+
+# Temporary files
+*.tmp
+*.bak
+*~
+temp*
+.DS_Store
 
 # IDE-specific files
 .vscode/

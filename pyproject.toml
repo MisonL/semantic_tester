@@ -1,0 +1,43 @@
+[project]
+name = "semantic_tester"
+version = "2.5.0"
+description = "AI客服问答语义比对工具 - 模块化架构，100% 类型安全"
+authors = [
+    {name = "Mison", email = "1360962086@qq.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pandas>=2.0.0",
+    "google-genai>=0.3.0",
+    "python-dotenv>=1.0.1",
+    "colorama>=0.4.0",
+    "google-api-core>=2.0.0",
+    "openpyxl>=3.1.0",
+    "openai>=2.8.1",
+    "requests>=2.32.5",
+    "anthropic>=0.74.1",
+]
+
+[project.scripts]
+semantic-tester = "semantic_tester.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -1,0 +1,454 @@
+"""
+Excel 处理器
+
+处理 Excel 文件的读取、格式检测、数据处理和保存。
+"""
+
+import logging
+import os
+import sys
+from typing import Dict, List, Optional, Tuple
+
+import pandas as pd
+from colorama import Fore, Style
+
+from .utils import get_column_index, get_or_add_column
+
+logger = logging.getLogger(__name__)
+
+
+class ExcelProcessor:
+    """Excel 文件处理器"""
+
+    def __init__(self, excel_path: str):
+        """
+        初始化 Excel 处理器
+
+        Args:
+            excel_path: Excel 文件路径
+        """
+        self.excel_path = excel_path
+        self.df: Optional[pd.DataFrame] = None
+        self.column_names: List[str] = []
+        self.workbook = None
+        self.worksheet = None
+        self.is_dify_format = False
+        self.format_info = {}
+
+    def load_excel(self) -> bool:
+        """
+        加载 Excel 文件
+
+        Returns:
+            bool: 是否成功加载
+        """
+        try:
+            # 使用 pandas 读取 Excel 文件以获取 DataFrame，指定引擎
+            try:
+                self.df = pd.read_excel(self.excel_path, engine="openpyxl")
+            except Exception:
+                self.df = pd.read_excel(self.excel_path, engine="xlrd")
+
+            logger.info(f"正在读取Excel文件：{self.excel_path}")
+            logger.info(
+                f"Excel文件读取成功，共 {len(self.df)} 行 {len(self.df.columns)} 列。"
+            )
+            logger.info(f"列名: {list(self.df.columns)}")
+
+            # 获取列名并转换为字符串
+            self.column_names = [str(col) for col in self.df.columns]
+
+            # 加载工作簿用于后续操作
+            from openpyxl import load_workbook
+
+            self.workbook = load_workbook(self.excel_path)
+            self.worksheet = self.workbook.active
+
+            return True
+        except Exception as e:
+            logger.error(f"无法读取 Excel 文件 '{self.excel_path}'：{e}")
+            return False
+
+    def detect_format(self) -> Dict:
+        """
+        检测 Excel 文件格式（是否为 dify_chat_tester 输出格式）
+
+        Returns:
+            Dict: 格式检测结果信息
+        """
+        # 检查必需的核心列
+        has_question_col = any(
+            col in self.column_names for col in ["原始问题", "用户输入", "问题"]
+        )
+        has_response_col = any(col.endswith("响应") for col in self.column_names)
+        has_timestamp_col = any(
+            col in self.column_names for col in ["时间戳", "Timestamp"]
+        )
+        has_success_col = any(
+            col in self.column_names for col in ["是否成功", "成功", "Success"]
+        )
+
+        # 综合判断是否为dify格式
+        self.is_dify_format = (
+            has_question_col and has_response_col and has_timestamp_col
+        )
+
+        format_info = {
+            "is_dify_format": self.is_dify_format,
+            "has_question_col": has_question_col,
+            "has_response_col": has_response_col,
+            "has_timestamp_col": has_timestamp_col,
+            "has_success_col": has_success_col,
+            "question_col": None,
+            "response_col": None,
+            "response_cols": [],
+        }
+
+        if self.is_dify_format:
+            # 找到问题列和响应列
+            question_col = None
+            response_cols = []
+
+            # 确定问题列
+            for col in ["原始问题", "用户输入", "问题"]:
+                if col in self.column_names:
+                    question_col = col
+                    break
+
+            # 确定响应列（以"响应"结尾的列）
+            for col in self.column_names:
+                if col.endswith("响应") and col != question_col:
+                    response_cols.append(col)
+
+            format_info["question_col"] = question_col
+            format_info["response_cols"] = response_cols
+
+        self.format_info = format_info
+        return format_info
+
+    def display_format_info(self):
+        """显示格式检测结果"""
+        print(f"\nExcel 文件中的列名:")
+        for i, col_name in enumerate(self.column_names):
+            print(f"{i+1}. {col_name}")
+
+        if self.is_dify_format:
+            print(
+                f"\n{Fore.GREEN}✅ 检测到 Dify Chat Tester 输出格式！{Style.RESET_ALL}"
+            )
+            print("将自动适配列映射关系：")
+            print(f"  • {self.format_info['question_col']} → 问题点")
+            print(
+                f"  • {self.format_info['response_cols'][0] if self.format_info['response_cols'] else '未知'} → AI客服回答"
+            )
+            print("  • 文档名称 → 需要手动指定")
+
+    def auto_add_document_column(self):
+        """自动添加文档名称列（针对 dify 格式）"""
+        assert self.df is not None, "DataFrame must be loaded before adding columns"
+        if "文档名称" not in self.column_names:
+            self.df.insert(0, "文档名称", "")  # 在第一列插入文档名称列
+            self.column_names.insert(0, "文档名称")
+            print(
+                f"\n{Fore.YELLOW}📝 已自动添加'文档名称'列，请稍后手动填写对应的文档名。{Style.RESET_ALL}"
+            )
+
+    def get_user_column_mapping(self, auto_config: bool = False) -> Dict[str, int]:
+        """
+        获取用户列映射配置
+
+        Args:
+            auto_config: 是否使用自动配置（针对 dify 格式）
+
+        Returns:
+            Dict[str, int]: 列索引映射
+        """
+        column_mapping = {}
+
+        if auto_config and self.is_dify_format:
+            # 使用自动配置
+            doc_name_col_index = 0  # 文档名称列
+            question_col_index = self.column_names.index(
+                self.format_info["question_col"]
+            )
+
+            # 处理响应列选择
+            response_cols = self.format_info["response_cols"]
+            if len(response_cols) > 1:
+                print(
+                    f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}"
+                )
+                for i, col in enumerate(response_cols):
+                    print(f"  {i+1}. {col}")
+
+                while True:
+                    choice = input(
+                        f"请输入选择 (1-{len(response_cols)}, 默认: 1): "
+                    ).strip()
+                    if not choice:
+                        choice = "1"
+
+                    try:
+                        choice_idx = int(choice) - 1
+                        if 0 <= choice_idx < len(response_cols):
+                            response_col = response_cols[choice_idx]
+                            break
+                        else:
+                            print(
+                                f"选择无效，请输入 1-{len(response_cols)} 之间的数字。"
+                            )
+                    except ValueError:
+                        print(f"请输入有效的数字。")
+            elif len(response_cols) == 1:
+                response_col = response_cols[0]
+            else:
+                print(f"{Fore.RED}❌ 未找到任何响应列！{Style.RESET_ALL}")
+                auto_config = False
+                return self.get_user_column_mapping(auto_config=False)
+
+            ai_answer_col_index = self.column_names.index(response_col)
+
+            column_mapping = {
+                "doc_name_col_index": doc_name_col_index,
+                "question_col_index": question_col_index,
+                "ai_answer_col_index": ai_answer_col_index,
+            }
+
+            print(f"\n已配置列映射：")
+            print(f"  • 文档名称: 列 {doc_name_col_index + 1} ('文档名称')")
+            print(
+                f"  • 问题点: 列 {question_col_index + 1} ('{self.format_info['question_col']}')"
+            )
+            print(f"  • AI客服回答: 列 {ai_answer_col_index + 1} ('{response_col}')")
+
+            # 询问是否使用自动配置
+            use_auto_config = input(
+                f"\n{Fore.CYAN}是否使用此自动配置？(Y/n，默认: Y): {Style.RESET_ALL}"
+            ).lower()
+            if use_auto_config != "n":
+                return column_mapping
+
+        # 手动配置列映射
+        # --- 获取"文档名称"列 ---
+        doc_name_col_input = input(
+            '请输入"文档名称"所在列的名称或序号 (例如: "文档名称" 或 "1"): '
+        )
+        doc_name_col_index = get_column_index(self.column_names, doc_name_col_input)
+        if doc_name_col_index == -1:
+            logger.error(
+                f"错误: 未找到列名为 '{doc_name_col_input}' 的'文档名称'列。程序退出。"
+            )
+            sys.exit(1)
+
+        # --- 获取"问题点"列 ---
+        question_col_input = input(
+            '请输入"问题点"所在列的名称或序号 (例如: "问题点" 或 "2"): '
+        )
+        question_col_index = get_column_index(self.column_names, question_col_input)
+        if question_col_index == -1:
+            logger.error(
+                f"错误: 未找到列名为 '{question_col_input}' 的'问题点'列。程序退出。"
+            )
+            sys.exit(1)
+
+        # --- 获取"AI客服回答"列 ---
+        ai_answer_col_input = input(
+            '请输入"AI客服回答"所在列的名称或序号 (例如: "AI客服回答" 或 "3"): '
+        )
+        ai_answer_col_index = get_column_index(self.column_names, ai_answer_col_input)
+        if ai_answer_col_index == -1:
+            logger.error(
+                f"错误: 未找到列名为 '{ai_answer_col_input}' 的'AI客服回答'列。程序退出。"
+            )
+            sys.exit(1)
+
+        return {
+            "doc_name_col_index": doc_name_col_index,
+            "question_col_index": question_col_index,
+            "ai_answer_col_index": ai_answer_col_index,
+        }
+
+    def get_result_columns(self) -> Dict[str, Tuple[str, int]]:
+        """
+        获取结果保存列配置
+
+        Returns:
+            Dict[str, Tuple[str, int]]: 结果列配置，包含列名和索引
+        """
+        assert (
+            self.df is not None
+        ), "DataFrame must be loaded before getting result columns"
+        # --- 获取"语义是否与源文档相符"结果保存列 ---
+        print("\n请选择'语义是否与源文档相符'结果保存列:")
+        print("现有列名:")
+        for i, col_name in enumerate(self.column_names):
+            print(f"{i+1}. {col_name}")
+        similarity_result_col_input = (
+            input(
+                "请输入要保存结果的列名或序号 (例如: '语义是否与源文档相符' 或直接输入新列名，默认: '语义是否与源文档相符'): "
+            )
+            or "语义是否与源文档相符"
+        )
+        similarity_result_col_index = get_or_add_column(
+            self.df, self.column_names, similarity_result_col_input
+        )
+
+        # --- 获取"判断依据"结果保存列 ---
+        print("\n请选择'判断依据'结果保存列:")
+        print("现有列名:")
+        for i, col_name in enumerate(self.column_names):
+            print(f"{i+1}. {col_name}")
+        reason_col_input = (
+            input(
+                "请输入要保存结果的列名或序号 (例如: '判断依据' 或直接输入新列名，默认: '判断依据'): "
+            )
+            or "判断依据"
+        )
+        reason_col_index = get_or_add_column(
+            self.df, self.column_names, reason_col_input
+        )
+
+        return {
+            "similarity_result": (
+                similarity_result_col_input,
+                similarity_result_col_index,
+            ),
+            "reason": (reason_col_input, reason_col_index),
+        }
+
+    def setup_result_columns(self, result_columns: Dict[str, Tuple[str, int]]):
+        """
+        设置结果列的数据类型
+
+        Args:
+            result_columns: 结果列配置
+        """
+        assert (
+            self.df is not None
+        ), "DataFrame must be loaded before setting up result columns"
+        similarity_col_name = result_columns["similarity_result"][0]
+        reason_col_name = result_columns["reason"][0]
+
+        # 检查结果列是否存在，如果不存在则创建，并指定dtype为object
+        if similarity_col_name not in self.df.columns:
+            self.df[similarity_col_name] = pd.Series(dtype="object")
+        if reason_col_name not in self.df.columns:
+            self.df[reason_col_name] = pd.Series(dtype="object")
+
+        # 强制转换列的dtype为object，确保能够存储字符串，解决FutureWarning
+        self.df[similarity_col_name] = self.df[similarity_col_name].astype("object")
+        self.df[reason_col_name] = self.df[reason_col_name].astype("object")
+
+    def get_row_data(
+        self, row_index: int, column_mapping: Dict[str, int]
+    ) -> Dict[str, str]:
+        """
+        获取指定行的数据
+
+        Args:
+            row_index: 行索引
+            column_mapping: 列映射配置
+
+        Returns:
+            Dict[str, str]: 行数据
+        """
+        assert self.df is not None, "DataFrame must be loaded before getting row data"
+        row = self.df.iloc[row_index]
+
+        doc_name_col_index = column_mapping["doc_name_col_index"]
+        question_col_index = column_mapping["question_col_index"]
+        ai_answer_col_index = column_mapping["ai_answer_col_index"]
+
+        doc_name = (
+            str(row.iloc[doc_name_col_index]).strip()
+            if pd.notna(row.iloc[doc_name_col_index])
+            else "未知文档"
+        )
+        question = (
+            str(row.iloc[question_col_index]).strip()
+            if pd.notna(row.iloc[question_col_index])
+            else ""
+        )
+        ai_answer = (
+            str(row.iloc[ai_answer_col_index]).strip()
+            if pd.notna(row.iloc[ai_answer_col_index])
+            else ""
+        )
+
+        return {"doc_name": doc_name, "question": question, "ai_answer": ai_answer}
+
+    def save_result(
+        self,
+        row_index: int,
+        result: str,
+        reason: str,
+        result_columns: Dict[str, Tuple[str, int]],
+    ):
+        """
+        保存结果到指定行
+
+        Args:
+            row_index: 行索引
+            result: 语义比对结果
+            reason: 判断依据
+            result_columns: 结果列配置
+        """
+        assert self.df is not None, "DataFrame must be loaded before saving results"
+        similarity_col_name = result_columns["similarity_result"][0]
+        reason_col_name = result_columns["reason"][0]
+
+        self.df.at[row_index, similarity_col_name] = result
+        self.df.at[row_index, reason_col_name] = reason
+
+    def save_intermediate_results(self, output_path: str, processed_count: int):
+        """
+        保存中间结果
+
+        Args:
+            output_path: 输出文件路径
+            processed_count: 已处理的记录数
+        """
+        assert (
+            self.df is not None
+        ), "DataFrame must be loaded before saving intermediate results"
+        try:
+            self.df.to_excel(output_path, index=False)
+            logger.info(
+                f"已保存中间结果到 {output_path} (已处理 {processed_count} 条记录)。"
+            )
+        except Exception as e:
+            logger.error(f"保存中间结果失败: {e}")
+
+    def save_final_results(self, output_path: str):
+        """
+        保存最终结果
+
+        Args:
+            output_path: 输出文件路径
+        """
+        assert (
+            self.df is not None
+        ), "DataFrame must be loaded before saving final results"
+        try:
+            self.df.to_excel(output_path, index=False)
+            logger.info(f"最终结果已保存到 {output_path}")
+        except Exception as e:
+            logger.error(f"保存最终结果失败: {e}")
+
+    def get_total_records(self) -> int:
+        """
+        获取总记录数
+
+        Returns:
+            int: 总记录数
+        """
+        return len(self.df) if self.df is not None else 0
+
+    def validate_file_exists(self) -> bool:
+        """
+        验证文件是否存在
+
+        Returns:
+            bool: 文件是否存在
+        """
+        return os.path.exists(self.excel_path)
