@@ -145,79 +145,118 @@ class DifyProvider(AIProvider):
 
         try:
             # 发送请求到 Dify API
-            url = f"{self.base_url}/chat-messages"
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            }
-
-            payload = {
-                "inputs": {},
-                "query": prompt,
-                "response_mode": "blocking",
-                "user": "semantic_tester",
-            }
-
-            if self.app_id:
-                payload["app_id"] = self.app_id
-
-            logger.debug(f"发送 Dify API 请求，提示词长度: {len(prompt)} 字符")
-
-            start_time = time.time()
-            response = requests.post(url, headers=headers, json=payload, timeout=60)
-            end_time = time.time()
-
-            logger.debug(f"Dify API 响应时间: {end_time - start_time:.2f} 秒")
+            response = self._send_dify_request(prompt)
 
             # 处理响应
-            if response.status_code == 200:
-                result_data = response.json()
-                logger.debug(f"Dify API 响应数据: {result_data}")
-
-                # 提取回答内容
-                answer = result_data.get("answer", "")
-                if not answer:
-                    error_msg = "Dify API 返回空回答"
-                    logger.warning(error_msg)
-                    return "错误", error_msg
-
-                # 解析语义分析结果
-                result, reason = self._parse_semantic_result(answer)
-                logger.info(f"Dify 语义分析完成: {result}")
-                return result, reason
-
-            elif response.status_code == 401:
-                error_msg = "Dify API 认证失败，请检查 API 密钥"
-                logger.error(error_msg)
-                raise AuthenticationError(error_msg)
-
-            elif response.status_code == 429:
-                error_msg = "Dify API 速率限制，请稍后重试"
-                logger.warning(error_msg)
-                raise RateLimitError(error_msg)
-
-            else:
-                error_msg = f"Dify API 请求失败，状态码: {response.status_code}, 响应: {response.text}"
-                logger.error(error_msg)
-                raise APIError(error_msg)
-
-        except requests.exceptions.Timeout:
-            error_msg = "Dify API 请求超时"
-            logger.error(error_msg)
-            return "错误", error_msg
-
-        except requests.exceptions.ConnectionError:
-            error_msg = "Dify API 连接失败"
-            logger.error(error_msg)
-            return "错误", error_msg
+            return self._process_dify_response(response)
 
         except (AuthenticationError, RateLimitError, APIError) as e:
             raise e
-
         except Exception as e:
             error_msg = f"Dify API 调用异常: {str(e)}"
             logger.error(error_msg)
             return "错误", error_msg
+
+    def _send_dify_request(self, prompt: str) -> requests.Response:
+        """
+        发送请求到Dify API
+
+        Args:
+            prompt: 提示词
+
+        Returns:
+            requests.Response: API响应
+
+        Raises:
+            AuthenticationError: 认证失败
+            RateLimitError: 速率限制
+            APIError: API错误
+            requests.exceptions.Timeout: 请求超时
+            requests.exceptions.ConnectionError: 连接失败
+        """
+        # 构建请求
+        url = f"{self.base_url}/chat-messages"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "inputs": {},
+            "query": prompt,
+            "response_mode": "blocking",
+            "user": "semantic_tester",
+        }
+
+        if self.app_id:
+            payload["app_id"] = self.app_id
+
+        logger.debug(f"发送 Dify API 请求，提示词长度: {len(prompt)} 字符")
+
+        start_time = time.time()
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        end_time = time.time()
+
+        logger.debug(f"Dify API 响应时间: {end_time - start_time:.2f} 秒")
+
+        return response
+
+    def _process_dify_response(self, response: requests.Response) -> tuple[str, str]:
+        """
+        处理Dify API响应
+
+        Args:
+            response: API响应
+
+        Returns:
+            tuple[str, str]: (结果, 判断依据)
+
+        Raises:
+            AuthenticationError: 认证失败
+            RateLimitError: 速率限制
+            APIError: API错误
+        """
+        status_code = response.status_code
+
+        if status_code == 200:
+            return self._handle_success_response(response)
+        elif status_code == 401:
+            error_msg = "Dify API 认证失败，请检查 API 密钥"
+            logger.error(error_msg)
+            raise AuthenticationError(error_msg)
+        elif status_code == 429:
+            error_msg = "Dify API 速率限制，请稍后重试"
+            logger.warning(error_msg)
+            raise RateLimitError(error_msg)
+        else:
+            error_msg = f"Dify API 请求失败，状态码: {status_code}, 响应: {response.text}"
+            logger.error(error_msg)
+            raise APIError(error_msg)
+
+    def _handle_success_response(self, response: requests.Response) -> tuple[str, str]:
+        """
+        处理成功响应
+
+        Args:
+            response: API响应
+
+        Returns:
+            tuple[str, str]: (结果, 判断依据)
+        """
+        result_data = response.json()
+        logger.debug(f"Dify API 响应数据: {result_data}")
+
+        # 提取回答内容
+        answer = result_data.get("answer", "")
+        if not answer:
+            error_msg = "Dify API 返回空回答"
+            logger.warning(error_msg)
+            return "错误", error_msg
+
+        # 解析语义分析结果
+        result, reason = self._parse_semantic_result(answer)
+        logger.info(f"Dify 语义分析完成: {result}")
+        return result, reason
 
     def _build_semantic_analysis_prompt(
         self, question: str, ai_answer: str, source_document: str

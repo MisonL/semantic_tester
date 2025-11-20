@@ -311,6 +311,19 @@ class GeminiAPIHandler:
         current_time = time.time()
 
         # 调试日志：显示所有密钥状态
+        self._log_key_status_legacy(current_time, force_rotate)
+
+        # 尝试找到可用密钥
+        if self._try_find_available_key_legacy(current_time, force_rotate):
+            return
+
+        # 所有密钥都不可用时处理
+        self._handle_all_keys_unavailable_legacy(current_time, force_rotate)
+
+    def _log_key_status_legacy(self, current_time: float, force_rotate: bool):
+        """
+        记录所有密钥状态
+        """
         logger.debug(
             f"开始密钥轮转，当前密钥索引: {self.current_key_index}, 强制轮转: {force_rotate}"
         )
@@ -322,84 +335,102 @@ class GeminiAPIHandler:
                 f"密钥 {index}: 冷却剩余 {cooldown_remaining:.1f}s, 上次使用 {time_since_last_use:.1f}s前"
             )
 
-        # 循环直到找到一个可用的密钥
+    def _try_find_available_key_legacy(self, current_time: float, force_rotate: bool) -> bool:
+        """
+        尝试找到可用的密钥
+
+        Returns:
+            bool: 找到可用密钥返回True
+        """
         for _ in range(len(self.api_keys)):
             self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
             next_key = self.api_keys[self.current_key_index]
 
             cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
             cooldown_remaining = max(0.0, cooldown_until - current_time)
-            time_since_last_use = current_time - self.key_last_used_time.get(
-                next_key, 0.0
-            )
+            time_since_last_use = current_time - self.key_last_used_time.get(next_key, 0.0)
 
             # 强制轮转（因429错误）直接使用下一个密钥
             if force_rotate:
-                logger.info(
-                    f"强制轮转: 跳过等待, 新密钥索引: {self.current_key_index} (密钥: {next_key[:5]}...)"
-                )
-                self.key_last_used_time[next_key] = current_time
-                self._configure_gemini_api()
-                return
+                self._use_key_immediately_legacy(next_key, current_time, "强制轮转")
+                return True
 
             # 检查密钥是否可用
             if cooldown_remaining <= 0:
-                # 如果是首次实际调用，则跳过60秒等待
-                if self.first_actual_call:
-                    logger.info(
-                        f"首次实际调用，密钥 {self.current_key_index} 可用 (密钥: {next_key[:5]}...)"
-                    )
-                    self.first_actual_call = False  # 标记首次调用已完成
-                # 智能等待策略：距离上次使用不足60秒则等待
-                elif time_since_last_use < 60:
-                    wait_time = 60 - time_since_last_use
-                    logger.info(
-                        f"密钥 {self.current_key_index} 需要等待: {wait_time:.1f}s (上次使用: {time_since_last_use:.1f}s前)"
-                    )
-                    # 在这里添加等待提示
-                    stop_event = threading.Event()
-                    waiting_thread = threading.Thread(
-                        target=show_waiting_indicator, args=(stop_event, "等待密钥冷却")
-                    )
-                    waiting_thread.daemon = True
-                    waiting_thread.start()
-                    time.sleep(wait_time)
-                    stop_event.set()
-                    if waiting_thread.is_alive():
-                        waiting_thread.join(timeout=0.5)
-
-                logger.info(
-                    f"密钥 {self.current_key_index} 可用 (冷却已过, 密钥: {next_key[:5]}...)"
-                )
-                self.key_last_used_time[next_key] = time.time()  # 更新为当前时间
-                self._configure_gemini_api()
-                return
+                if self._check_and_use_key_legacy(next_key, current_time, time_since_last_use):
+                    return True
             else:
                 logger.info(
                     f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s (密钥: {next_key[:5]}...)"
                 )
 
-        # 所有密钥都不可用时等待最长冷却时间
+        return False
+
+    def _use_key_immediately_legacy(self, key: str, current_time: float, reason: str):
+        """
+        立即使用密钥
+        """
+        logger.info(
+            f"{reason}: 跳过等待, 新密钥索引: {self.current_key_index} (密钥: {key[:5]}...)"
+        )
+        self.key_last_used_time[key] = current_time
+        self._configure_gemini_api()
+
+    def _check_and_use_key_legacy(self, key: str, current_time: float, time_since_last_use: float) -> bool:
+        """
+        检查并使用密钥
+
+        Returns:
+            bool: 成功使用密钥返回True
+        """
+        # 如果是首次实际调用，则跳过60秒等待
+        if self.first_actual_call:
+            logger.info(
+                f"首次实际调用，密钥 {self.current_key_index} 可用 (密钥: {key[:5]}...)"
+            )
+            self.first_actual_call = False  # 标记首次调用已完成
+        # 智能等待策略：距离上次使用不足60秒则等待
+        elif time_since_last_use < 60:
+            wait_time = 60 - time_since_last_use
+            logger.info(
+                f"密钥 {self.current_key_index} 需要等待: {wait_time:.1f}s (上次使用: {time_since_last_use:.1f}s前)"
+            )
+            self._wait_with_indicator_legacy(wait_time, "等待密钥冷却")
+
+        logger.info(
+            f"密钥 {self.current_key_index} 可用 (冷却已过, 密钥: {key[:5]}...)"
+        )
+        self.key_last_used_time[key] = current_time  # 更新为当前时间
+        self._configure_gemini_api()
+        return True
+
+    def _wait_with_indicator_legacy(self, wait_time: float, message: str):
+        """
+        带指示器的等待
+        """
+        stop_event = threading.Event()
+        waiting_thread = threading.Thread(
+            target=show_waiting_indicator, args=(stop_event, message)
+        )
+        waiting_thread.daemon = True
+        waiting_thread.start()
+        time.sleep(wait_time)
+        stop_event.set()
+        if waiting_thread.is_alive():
+            waiting_thread.join(timeout=0.5)
+
+    def _handle_all_keys_unavailable_legacy(self, current_time: float, force_rotate: bool):
+        """
+        处理所有密钥都不可用的情况
+        """
         max_cooldown = max(self.key_cooldown_until.values(), default=0) - current_time
         if max_cooldown > 0:
             logger.warning(f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s")
-            # 在这里添加等待提示
-            stop_event = threading.Event()
-            waiting_thread = threading.Thread(
-                target=show_waiting_indicator, args=(stop_event, "等待所有密钥冷却")
-            )
-            waiting_thread.daemon = True
-            waiting_thread.start()
-            time.sleep(max_cooldown)
-            stop_event.set()
-            if waiting_thread.is_alive():
-                waiting_thread.join(timeout=0.5)
-
+            self._wait_with_indicator_legacy(max_cooldown, "等待所有密钥冷却")
             self.rotate_key(force_rotate)  # 递归尝试
         else:
             logger.error("所有密钥均不可用且无有效冷却时间")
             # 在所有密钥都不可用时，不退出程序，而是让调用者处理无可用模型的情况
-            self.client = None  # 确保客户端为None
 
     def get_client(self):
         """获取当前配置的Gemini客户端实例。"""

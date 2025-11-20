@@ -219,8 +219,7 @@ class SemanticTestApp:
             output_path: 输出路径
             show_comparison_result: 是否显示比对结果
         """
-        if not self.excel_processor:
-            logger.error("Excel处理器未初始化")
+        if not self._validate_excel_processor():
             return
 
         total_records = self.excel_processor.get_total_records()
@@ -230,119 +229,24 @@ class SemanticTestApp:
         skipped_count = 0
         error_count = 0
 
-        # 单线程顺序处理
-        if not self.excel_processor or self.excel_processor.df is None:
-            logger.error("Excel数据未加载")
-            return
-
-        for row_index, (_, _) in enumerate(self.excel_processor.df.iterrows()):
-            row_number = row_index + 1
-            # pandas DataFrame的索引处理 - 使用row_index作为行号
-            # 对于大多数用例，我们可以直接使用row_index作为实际的行索引
-            index_int = row_index
-
-            # 显示处理进度
-            CLIInterface.print_progress(row_number, total_records)
-
-            # 获取行数据
-            row_data = self.excel_processor.get_row_data(row_index, column_mapping)
-
-            # 验证行数据
-            validation_errors = ValidationUtils.validate_row_data(row_data)
-            if validation_errors:
-                errors_str = "; ".join(validation_errors)
-                error_msg = f"跳过第 {row_number}/{total_records} 条记录：{errors_str}"
-                logger.warning(error_msg)
-                self.excel_processor.save_result(
-                    row_index=index_int,
-                    result="跳过",
-                    reason="; ".join(validation_errors),
-                    result_columns=result_columns,
-                )
-                skipped_count += 1
-
-                # 保存中间结果
-                if row_number % self.config.auto_save_interval == 0:
-                    self.excel_processor.save_intermediate_results(
-                        output_path, row_number
-                    )
-                continue
-
-            # 读取知识库文档内容
-            doc_content = self._read_document_content(
-                knowledge_base_dir=knowledge_base_dir, doc_name=row_data["doc_name"]
+        # 处理每一行数据
+        for row_index in range(total_records):
+            result = self._process_single_row(
+                row_index=row_index,
+                total_records=total_records,
+                knowledge_base_dir=knowledge_base_dir,
+                column_mapping=column_mapping,
+                result_columns=result_columns,
+                output_path=output_path,
+                show_comparison_result=show_comparison_result,
             )
 
-            if not doc_content:
-                logger.warning(
-                    f"第 {row_number}/{total_records} 条记录：未找到对应的Markdown文件"
-                )
-                self.excel_processor.save_result(
-                    row_index=index_int,
-                    result="源文档未找到",
-                    reason=f"未找到对应的Markdown文件：{row_data['doc_name']}",
-                    result_columns=result_columns,
-                )
-                # 每处理完一条记录就保存结果（保持与原始代码一致）
-                self.excel_processor.save_intermediate_results(output_path, row_number)
+            if result == "processed":
+                processed_count += 1
+            elif result == "skipped":
+                skipped_count += 1
+            else:
                 error_count += 1
-                continue
-
-            # 调用语义比对 API
-            try:
-                # 优先使用新的供应商管理器，保持向后兼容
-                if self.provider_manager:
-                    result, reason = self.provider_manager.check_semantic_similarity(
-                        question=row_data["question"],
-                        ai_answer=row_data["ai_answer"],
-                        source_document=doc_content,
-                    )
-                elif self.api_handler:
-                    result, reason = check_semantic_similarity(
-                        gemini_api_handler=self.api_handler,
-                        question=row_data["question"],
-                        ai_answer=row_data["ai_answer"],
-                        source_document_content=doc_content,
-                    )
-                else:
-                    logger.error("没有可用的 API 处理器")
-                    result = "错误"
-                    reason = "没有可用的 API 处理器"
-
-                # 保存结果
-                self.excel_processor.save_result(
-                    row_index=index_int,
-                    result=result,
-                    reason=reason,
-                    result_columns=result_columns,
-                )
-
-                # 显示结果（如果启用）
-                if show_comparison_result and result not in ["错误", "跳过"]:
-                    CLIInterface.print_comparison_result(
-                        doc_name=row_data["doc_name"],
-                        question=row_data["question"],
-                        result=result,
-                        reason=reason,
-                    )
-
-                if result not in ["错误", "跳过"]:
-                    processed_count += 1
-                else:
-                    error_count += 1
-
-            except Exception as e:
-                logger.error(f"处理第 {row_number} 行时发生错误: {e}")
-                self.excel_processor.save_result(
-                    row_index=index_int,
-                    result="错误",
-                    reason=f"处理异常: {str(e)}",
-                    result_columns=result_columns,
-                )
-                error_count += 1
-
-            # 每处理完一条记录就保存结果（保持与原始代码一致）
-            self.excel_processor.save_intermediate_results(output_path, row_number)
 
         # 保存最终结果
         self.excel_processor.save_final_results(output_path)
@@ -354,6 +258,203 @@ class SemanticTestApp:
             skipped=skipped_count,
             errors=error_count,
         )
+
+    def _validate_excel_processor(self) -> bool:
+        """
+        验证Excel处理器是否已正确初始化
+
+        Returns:
+            bool: 验证是否通过
+        """
+        if not self.excel_processor:
+            logger.error("Excel处理器未初始化")
+            return False
+
+        if self.excel_processor.df is None:
+            logger.error("Excel数据未加载")
+            return False
+
+        return True
+
+    def _process_single_row(
+        self,
+        row_index: int,
+        total_records: int,
+        knowledge_base_dir: str,
+        column_mapping: dict,
+        result_columns: dict,
+        output_path: str,
+        show_comparison_result: bool,
+    ) -> str:
+        """
+        处理单行数据
+
+        Args:
+            row_index: 行索引
+            total_records: 总记录数
+            knowledge_base_dir: 知识库目录
+            column_mapping: 列映射配置
+            result_columns: 结果列配置
+            output_path: 输出路径
+            show_comparison_result: 是否显示比对结果
+
+        Returns:
+            str: 处理结果状态 ("processed", "skipped", "error")
+        """
+        row_number = row_index + 1
+
+        # 显示处理进度
+        CLIInterface.print_progress(row_number, total_records)
+
+        # 获取行数据
+        row_data = self.excel_processor.get_row_data(row_index, column_mapping)
+
+        # 验证行数据
+        validation_errors = ValidationUtils.validate_row_data(row_data)
+        if validation_errors:
+            self._handle_validation_errors(
+                row_index, row_number, total_records, validation_errors, result_columns, output_path
+            )
+            return "skipped"
+
+        # 读取知识库文档内容
+        doc_content = self._read_document_content(
+            knowledge_base_dir=knowledge_base_dir, doc_name=row_data["doc_name"]
+        )
+
+        if not doc_content:
+            self._handle_missing_document(
+                row_index, row_number, total_records, row_data["doc_name"], result_columns, output_path
+            )
+            return "error"
+
+        # 调用语义比对 API
+        try:
+            result, reason = self._call_semantic_api(row_data, doc_content)
+
+            # 保存结果
+            self.excel_processor.save_result(
+                row_index=row_index,
+                result=result,
+                reason=reason,
+                result_columns=result_columns,
+            )
+
+            # 显示结果（如果启用）
+            if show_comparison_result and result not in ["错误", "跳过"]:
+                CLIInterface.print_comparison_result(
+                    doc_name=row_data["doc_name"],
+                    question=row_data["question"],
+                    result=result,
+                    reason=reason,
+                )
+
+            # 保存中间结果
+            self.excel_processor.save_intermediate_results(output_path, row_number)
+
+            return "processed" if result not in ["错误", "跳过"] else "error"
+
+        except Exception as e:
+            self._handle_processing_error(
+                row_index, row_number, e, result_columns, output_path
+            )
+            return "error"
+
+    def _handle_validation_errors(
+        self,
+        row_index: int,
+        row_number: int,
+        total_records: int,
+        validation_errors: list,
+        result_columns: dict,
+        output_path: str,
+    ):
+        """
+        处理验证错误
+        """
+        errors_str = "; ".join(validation_errors)
+        error_msg = f"跳过第 {row_number}/{total_records} 条记录：{errors_str}"
+        logger.warning(error_msg)
+        self.excel_processor.save_result(
+            row_index=row_index,
+            result="跳过",
+            reason=errors_str,
+            result_columns=result_columns,
+        )
+
+        # 保存中间结果
+        if row_number % self.config.auto_save_interval == 0:
+            self.excel_processor.save_intermediate_results(output_path, row_number)
+
+    def _handle_missing_document(
+        self,
+        row_index: int,
+        row_number: int,
+        total_records: int,
+        doc_name: str,
+        result_columns: dict,
+        output_path: str,
+    ):
+        """
+        处理文档缺失的情况
+        """
+        logger.warning(
+            f"第 {row_number}/{total_records} 条记录：未找到对应的Markdown文件"
+        )
+        self.excel_processor.save_result(
+            row_index=row_index,
+            result="源文档未找到",
+            reason=f"未找到对应的Markdown文件：{doc_name}",
+            result_columns=result_columns,
+        )
+        # 每处理完一条记录就保存结果（保持与原始代码一致）
+        self.excel_processor.save_intermediate_results(output_path, row_number)
+
+    def _call_semantic_api(self, row_data: dict, doc_content: str) -> tuple[str, str]:
+        """
+        调用语义比对API
+
+        Returns:
+            tuple[str, str]: (结果, 原因)
+        """
+        # 优先使用新的供应商管理器，保持向后兼容
+        if self.provider_manager:
+            return self.provider_manager.check_semantic_similarity(
+                question=row_data["question"],
+                ai_answer=row_data["ai_answer"],
+                source_document=doc_content,
+            )
+        elif self.api_handler:
+            return check_semantic_similarity(
+                gemini_api_handler=self.api_handler,
+                question=row_data["question"],
+                ai_answer=row_data["ai_answer"],
+                source_document_content=doc_content,
+            )
+        else:
+            logger.error("没有可用的 API 处理器")
+            return "错误", "没有可用的 API 处理器"
+
+    def _handle_processing_error(
+        self,
+        row_index: int,
+        row_number: int,
+        error: Exception,
+        result_columns: dict,
+        output_path: str,
+    ):
+        """
+        处理处理过程中的错误
+        """
+        logger.error(f"处理第 {row_number} 行时发生错误: {error}")
+        self.excel_processor.save_result(
+            row_index=row_index,
+            result="错误",
+            reason=f"处理异常: {str(error)}",
+            result_columns=result_columns,
+        )
+        # 每处理完一条记录就保存结果（保持与原始代码一致）
+        self.excel_processor.save_intermediate_results(output_path, row_number)
 
     def _read_document_content(
         self, knowledge_base_dir: str, doc_name: str
@@ -541,14 +642,24 @@ class SemanticTestApp:
         print("切换当前供应商")
         print("=" * 60)
 
-        # 显示所有供应商
         providers = self.provider_manager.get_available_providers()
-
         if not providers:
             print("❌ 没有可用的供应商")
             input("\n按回车键继续...")
             return
 
+        # 显示可用供应商
+        self._display_providers_list(providers)
+
+        # 获取用户选择并处理
+        selected_provider = self._get_provider_selection(providers)
+        if selected_provider:
+            self._complete_provider_switch(selected_provider)
+
+    def _display_providers_list(self, providers: list):
+        """
+        显示供应商列表
+        """
         print("\n可用供应商:")
         for i, provider_info in enumerate(providers, 1):
             provider_name = provider_info["name"]
@@ -560,7 +671,13 @@ class SemanticTestApp:
 
             print(f"{i}. {provider_name}{current_marker} - {status}")
 
-        # 获取用户选择
+    def _get_provider_selection(self, providers: list):
+        """
+        获取用户选择的供应商
+
+        Returns:
+            Provider or None: 选择的供应商对象
+        """
         while True:
             try:
                 choice_input = input(
@@ -569,43 +686,54 @@ class SemanticTestApp:
 
                 if not choice_input:
                     print("操作已取消")
-                    break
+                    return None
 
                 choice_index = int(choice_input)
                 if 1 <= choice_index <= len(providers):
                     selected_provider_info = providers[choice_index - 1]
                     selected_provider_id = selected_provider_info["id"]
-                    selected_provider = self.provider_manager.get_provider(
-                        selected_provider_id
-                    )
-
-                    if self.provider_manager.set_current_provider(selected_provider_id):
-                        print(f"\n✅ 已切换到供应商: {selected_provider.name}")
-
-                        # 验证新供应商的API密钥
-                        if selected_provider.is_configured():
-                            print("正在验证API密钥...")
-                            is_valid = self.provider_manager._validate_provider_api_key(
-                                selected_provider
-                            )
-                            if is_valid:
-                                print("✅ API密钥验证通过")
-                            else:
-                                print("⚠️  API密钥验证失败，可能无法正常使用")
-                        else:
-                            print("⚠️  该供应商未配置，可能无法正常使用")
-
-                        input("\n按回车键继续...")
-                        break
-                    else:
-                        print("❌ 切换失败")
+                    return self.provider_manager.get_provider(selected_provider_id)
                 else:
                     print(f"❌ 无效的选择，请输入 1-{len(providers)} 之间的数字")
             except ValueError:
                 print("❌ 请输入有效的数字")
             except KeyboardInterrupt:
                 print("\n操作已取消")
-                break
+                return None
+
+    def _complete_provider_switch(self, selected_provider):
+        """
+        完成供应商切换过程
+
+        Args:
+            selected_provider: 要切换到的供应商
+        """
+        if self.provider_manager.set_current_provider(selected_provider.id):
+            print(f"\n✅ 已切换到供应商: {selected_provider.name}")
+
+            # 验证新供应商的API密钥
+            self._validate_and_show_provider_status(selected_provider)
+
+            input("\n按回车键继续...")
+        else:
+            print("❌ 切换失败")
+
+    def _validate_and_show_provider_status(self, provider):
+        """
+        验证供应商并显示状态
+
+        Args:
+            provider: 要验证的供应商
+        """
+        if provider.is_configured():
+            print("正在验证API密钥...")
+            is_valid = self.provider_manager._validate_provider_api_key(provider)
+            if is_valid:
+                print("✅ API密钥验证通过")
+            else:
+                print("⚠️  API密钥验证失败，可能无法正常使用")
+        else:
+            print("⚠️  该供应商未配置，可能无法正常使用")
 
     def _revalidate_all_providers(self):
         """重新验证所有供应商"""
@@ -705,94 +833,19 @@ AI客服问答语义比对工具 - 使用说明
 def main():
     """主函数"""
     try:
-        # 创建应用实例
-        app = SemanticTestApp()
-
-        # 初始化应用
-        if not app.initialize():
+        # 创建并初始化应用实例
+        app = _create_and_initialize_app()
+        if not app:
             sys.exit(1)
 
         # 检查命令行参数
         if len(sys.argv) > 1:
-            # 检查帮助参数
-            if sys.argv[1] in ["-h", "--help", "help"]:
-                print(help_text())
+            # 处理命令行参数
+            if _handle_help_argument():
                 sys.exit(0)
 
-            # 命令行模式 - 直接处理指定文件
-            if len(sys.argv) >= 2:
-                excel_path = sys.argv[1]
-                knowledge_base_dir = sys.argv[2] if len(sys.argv) > 2 else None
-
-                # 验证文件路径
-                if not ValidationUtils.is_valid_file_path(
-                    excel_path, [".xlsx", ".xls"]
-                ):
-                    print(f"错误: 无效的 Excel 文件路径: {excel_path}")
-                    sys.exit(1)
-
-                # 设置 Excel 处理器
-                app.excel_processor = ExcelProcessor(excel_path)
-
-                if not app.excel_processor.load_excel():
-                    print(f"错误: 无法加载 Excel 文件: {excel_path}")
-                    sys.exit(1)
-
-                # 如果没有提供知识库目录，询问用户
-                if not knowledge_base_dir:
-                    knowledge_base_dir = CLIInterface.get_knowledge_base_dir()
-
-                # 使用默认配置进行快速处理
-                print("\n" + "=" * 60)
-                print("命令行快速处理模式")
-                print("=" * 60)
-
-                # 检测文件格式
-                format_info = app.excel_processor.detect_format()
-                app.excel_processor.display_format_info()
-
-                # 自动适配 dify 格式
-                if format_info["is_dify_format"]:
-                    app.excel_processor.auto_add_document_column()
-
-                # 获取列映射配置（自动配置）
-                column_mapping = app.excel_processor.get_user_column_mapping(
-                    auto_config=format_info["is_dify_format"]
-                )
-
-                # 获取结果列配置（使用默认值）
-                result_columns = {
-                    "similarity_result_col": ("语义是否与源文档相符", -1),
-                    "reason_col": ("判断依据", -1),
-                }
-
-                # 设置结果列
-                app.excel_processor.setup_result_columns(result_columns)
-
-                # 获取输出路径
-                default_output_path = app.config.get_default_output_path(excel_path)
-                output_path = CLIInterface.get_output_path(default_output_path)
-
-                # 确保输出目录存在
-                app.config.ensure_output_dir(output_path)
-
-                print(f"\n📊 开始处理 Excel 文件: {excel_path}")
-                print(f"📚 知识库目录: {knowledge_base_dir}")
-                print(f"💾 输出路径: {output_path}")
-                print("=" * 60)
-
-                # 开始处理
-                app.process_data(
-                    knowledge_base_dir=knowledge_base_dir,
-                    column_mapping=column_mapping,
-                    result_columns=result_columns,
-                    output_path=output_path,
-                    show_comparison_result=False,
-                )
-
-                print("\n" + "=" * 60)
-                print("✅ 命令行快速处理完成！")
-                print("=" * 60)
+            # 命令行模式处理
+            _run_command_line_mode(app)
         else:
             # 交互式菜单模式
             app.run_menu_mode()
@@ -804,6 +857,177 @@ def main():
         logger.error(f"程序运行时发生未捕获的异常: {e}", exc_info=True)
         print(f"程序运行出错: {e}")
         sys.exit(1)
+
+
+def _create_and_initialize_app() -> Optional[SemanticTestApp]:
+    """
+    创建并初始化应用实例
+
+    Returns:
+        SemanticTestApp or None: 初始化成功返回应用实例，失败返回None
+    """
+    app = SemanticTestApp()
+    if not app.initialize():
+        return None
+    return app
+
+
+def _handle_help_argument() -> bool:
+    """
+    处理帮助参数
+
+    Returns:
+        bool: 如果是帮助参数返回True
+    """
+    if sys.argv[1] in ["-h", "--help", "help"]:
+        print(help_text())
+        return True
+    return False
+
+
+def _run_command_line_mode(app: SemanticTestApp):
+    """
+    运行命令行模式
+
+    Args:
+        app: 应用实例
+    """
+    if len(sys.argv) < 2:
+        return
+
+    excel_path = sys.argv[1]
+    knowledge_base_dir = sys.argv[2] if len(sys.argv) > 2 else None
+
+    # 验证并加载Excel文件
+    if not _validate_and_load_excel(app, excel_path):
+        sys.exit(1)
+
+    # 获取知识库目录
+    if not knowledge_base_dir:
+        knowledge_base_dir = CLIInterface.get_knowledge_base_dir()
+
+    # 显示命令行模式信息
+    _display_command_line_mode_header()
+
+    # 检测并处理文件格式
+    format_info = _detect_and_handle_file_format(app)
+
+    # 获取列映射配置
+    column_mapping = app.excel_processor.get_user_column_mapping(
+        auto_config=format_info["is_dify_format"]
+    )
+
+    # 设置结果列和输出路径
+    result_columns = _setup_result_columns(app)
+    output_path = _get_output_path(app, excel_path)
+
+    # 显示处理信息
+    _display_processing_info(excel_path, knowledge_base_dir, output_path)
+
+    # 开始处理
+    app.process_data(
+        knowledge_base_dir=knowledge_base_dir,
+        column_mapping=column_mapping,
+        result_columns=result_columns,
+        output_path=output_path,
+        show_comparison_result=False,
+    )
+
+    # 显示完成信息
+    _display_completion_message()
+
+
+def _validate_and_load_excel(app: SemanticTestApp, excel_path: str) -> bool:
+    """
+    验证并加载Excel文件
+
+    Returns:
+        bool: 成功返回True
+    """
+    if not ValidationUtils.is_valid_file_path(excel_path, [".xlsx", ".xls"]):
+        print(f"错误: 无效的 Excel 文件路径: {excel_path}")
+        return False
+
+    app.excel_processor = ExcelProcessor(excel_path)
+
+    if not app.excel_processor.load_excel():
+        print(f"错误: 无法加载 Excel 文件: {excel_path}")
+        return False
+
+    return True
+
+
+def _display_command_line_mode_header():
+    """显示命令行模式标题"""
+    print("\n" + "=" * 60)
+    print("命令行快速处理模式")
+    print("=" * 60)
+
+
+def _detect_and_handle_file_format(app: SemanticTestApp) -> dict:
+    """
+    检测并处理文件格式
+
+    Returns:
+        dict: 格式信息
+    """
+    format_info = app.excel_processor.detect_format()
+    app.excel_processor.display_format_info()
+
+    # 自动适配 dify 格式
+    if format_info["is_dify_format"]:
+        app.excel_processor.auto_add_document_column()
+
+    return format_info
+
+
+def _setup_result_columns(app: SemanticTestApp) -> dict:
+    """
+    设置结果列
+
+    Returns:
+        dict: 结果列配置
+    """
+    result_columns = {
+        "similarity_result_col": ("语义是否与源文档相符", -1),
+        "reason_col": ("判断依据", -1),
+    }
+
+    # 设置结果列
+    app.excel_processor.setup_result_columns(result_columns)
+
+    return result_columns
+
+
+def _get_output_path(app: SemanticTestApp, excel_path: str) -> str:
+    """
+    获取输出路径
+
+    Returns:
+        str: 输出路径
+    """
+    default_output_path = app.config.get_default_output_path(excel_path)
+    output_path = CLIInterface.get_output_path(default_output_path)
+
+    # 确保输出目录存在
+    app.config.ensure_output_dir(output_path)
+
+    return output_path
+
+
+def _display_processing_info(excel_path: str, knowledge_base_dir: str, output_path: str):
+    """显示处理信息"""
+    print(f"\n📊 开始处理 Excel 文件: {excel_path}")
+    print(f"📚 知识库目录: {knowledge_base_dir}")
+    print(f"💾 输出路径: {output_path}")
+    print("=" * 60)
+
+
+def _display_completion_message():
+    """显示完成信息"""
+    print("\n" + "=" * 60)
+    print("✅ 命令行快速处理完成！")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

@@ -167,7 +167,7 @@ class GeminiProvider(AIProvider):
     ) -> bool:
         """
         处理无可用客户端的情况
-        
+
         Returns:
             bool: True 表示需要重试，False 表示应该返回错误
         """
@@ -182,7 +182,7 @@ class GeminiProvider(AIProvider):
     ) -> tuple[str, str]:
         """
         调用 Gemini API
-        
+
         Returns:
             tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
         """
@@ -233,12 +233,12 @@ class GeminiProvider(AIProvider):
     ) -> bool:
         """
         处理一般错误
-        
+
         Returns:
             bool: True 表示需要重试，False 表示应该返回错误
         """
         error_msg = str(e)
-        
+
         if isinstance(e, json.JSONDecodeError):
             logger.warning(
                 f"Gemini 返回的 JSON 格式不正确，错误：{error_msg}"

@@ -172,11 +172,11 @@ class ExcelProcessor:
 
         # 手动配置列映射
         return self._manual_configure_columns()
-    
+
     def _auto_configure_columns(self) -> Dict[str, int]:
         """
         自动配置列映射（针对 dify 格式）
-        
+
         Returns:
             Dict[str, int] or None: 列索引映射，如果失败返回None
         """
@@ -199,29 +199,29 @@ class ExcelProcessor:
         }
 
         self._display_column_mapping(column_mapping)
-        
+
         # 询问是否使用自动配置
         if self._confirm_auto_config():
             return column_mapping
-        
+
         return None
-    
+
     def _select_response_column(self) -> str:
         """
         选择响应列
-        
+
         Returns:
             str: 选择的列名或None
         """
         response_cols = self.format_info["response_cols"]
-        
+
         if not response_cols:
             print(f"{Fore.RED}❌ 未找到任何响应列！{Style.RESET_ALL}")
             return None
-        
+
         if len(response_cols) == 1:
             return response_cols[0]
-        
+
         print(
             f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}"
         )
@@ -245,7 +245,7 @@ class ExcelProcessor:
                     )
             except ValueError:
                 print("请输入有效的数字。")
-    
+
     def _display_column_mapping(self, column_mapping: Dict[str, int]):
         """
         显示列映射配置
@@ -258,11 +258,11 @@ class ExcelProcessor:
         print(
             f"  • AI客服回答: 列 {column_mapping['ai_answer_col_index'] + 1} ('{self.format_info['response_cols'][0] if self.format_info['response_cols'] else '未知'}')"
         )
-    
+
     def _confirm_auto_config(self) -> bool:
         """
         确认是否使用自动配置
-        
+
         Returns:
             bool: True 表示确认使用
         """
@@ -270,11 +270,11 @@ class ExcelProcessor:
             f"\n{Fore.CYAN}是否使用此自动配置？(Y/n，默认: Y): {Style.RESET_ALL}"
         ).lower()
         return use_auto_config != "n"
-    
+
     def _manual_configure_columns(self) -> Dict[str, int]:
         """
         手动配置列映射
-        
+
         Returns:
             Dict[str, int]: 列索引映射
         """
@@ -282,43 +282,43 @@ class ExcelProcessor:
         doc_name_col_index = self._get_column_index_by_input(
             "文档名称", "请输入\"文档名称\"所在列的名称或序号"
         )
-        
+
         # 获取"问题点"列
         question_col_index = self._get_column_index_by_input(
             "问题点", "请输入\"问题点\"所在列的名称或序号"
         )
-        
+
         # 获取"AI客服回答"列
         ai_answer_col_index = self._get_column_index_by_input(
             "AI客服回答", "请输入\"AI客服回答\"所在列的名称或序号"
         )
-        
+
         return {
             "doc_name_col_index": doc_name_col_index,
             "question_col_index": question_col_index,
             "ai_answer_col_index": ai_answer_col_index,
         }
-    
+
     def _get_column_index_by_input(self, column_type: str, prompt: str) -> int:
         """
         根据用户输入获取列索引
-        
+
         Args:
             column_type: 列类型（用于错误消息）
             prompt: 提示信息
-        
+
         Returns:
             int: 列索引
         """
         col_input = input(f"{prompt} (例如: \"{column_type}\" 或 \"1\"): ")
         col_index = get_column_index(self.column_names, col_input)
-        
+
         if col_index == -1:
             logger.error(
                 f"错误: 未找到列名为 '{col_input}' 的'{column_type}'列。程序退出。"
             )
             sys.exit(1)
-        
+
         return col_index
 
     def get_result_columns(self) -> Dict[str, Tuple[str, int]]:

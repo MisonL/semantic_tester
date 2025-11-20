@@ -45,30 +45,29 @@ class CLIInterface:
         # 获取已配置的供应商
         configured_providers = provider_manager.get_configured_providers()
 
-        MenuHandler._show_provider_list(providers, configured_providers)
-        
+        CLIInterface._show_provider_list(providers, configured_providers)
+
         # 如果没有已配置的供应商，询问是否继续
         if not configured_providers:
-            if not MenuHandler._confirm_unconfigured_selection():
+            if not CLIInterface._confirm_unconfigured_selection():
                 return None
 
         # 获取用户选择
-        return MenuHandler._get_user_choice(provider_manager, providers)
-    
+        return CLIInterface._get_user_choice(provider_manager, providers)
+
     @staticmethod
     def _show_provider_list(providers: list, configured_providers: list):
         """
         显示供应商列表
         """
-        print("
-=== AI 供应商选择 ===")
+        print("\n=== AI 供应商选择 ===")
         print(
             f"可用供应商: {len(providers)} 个，已配置: {len(configured_providers)} 个"
         )
 
         # 显示供应商列表
         for i, provider_info in enumerate(providers, 1):
-            provider_id = provider_info["id"]
+            # provider_id = provider_info["id"]  # 未使用，暂时注释
             provider_name = provider_info["name"]
             is_configured = provider_info["configured"]
             is_current = provider_info.get("is_current", False)
@@ -77,40 +76,38 @@ class CLIInterface:
             current_marker = " (当前)" if is_current else ""
 
             print(f"{i}. {provider_name}{current_marker} - {status}")
-    
+
     @staticmethod
     def _confirm_unconfigured_selection() -> bool:
         """
         确认是否选择未配置的供应商
-        
+
         Returns:
             bool: True 表示继续，False 表示取消
         """
-        print("
-⚠️  警告: 没有已配置的 AI 供应商")
+        print("\n⚠️  警告: 没有已配置的 AI 供应商")
         proceed = input("是否继续选择未配置的供应商? (y/N): ").strip().lower()
         return proceed in ["y", "yes"]
-    
+
     @staticmethod
     def _get_user_choice(provider_manager, providers: list):
         """
         获取用户选择
-        
+
         Returns:
             str: 选择的供应商 ID
         """
         choices = [p["id"] for p in providers]
-        
+
         while True:
             try:
                 choice_input = input(
-                    f"
-请选择供应商 (1-{len(providers)}) 或按回车使用当前供应商: "
+                    "\n请选择供应商 (1-{}) 或按回车使用当前供应商: ".format(len(providers))
                 ).strip()
 
                 # 如果用户按回车，使用当前供应商
                 if not choice_input:
-                    return MenuHandler._use_current_provider(provider_manager)
+                    return CLIInterface._use_current_provider(provider_manager)
 
                 choice_index = int(choice_input)
                 if 1 <= choice_index <= len(providers):
@@ -120,7 +117,7 @@ class CLIInterface:
                     )
 
                     if not selected_provider.is_configured():
-                        if not MenuHandler._confirm_unconfigured_provider(selected_provider):
+                        if not CLIInterface._confirm_unconfigured_provider(selected_provider):
                             continue
 
                     # 设置为当前供应商
@@ -132,15 +129,14 @@ class CLIInterface:
             except ValueError:
                 print("❌ 请输入有效的数字")
             except KeyboardInterrupt:
-                print("
-操作已取消")
+                print("\n操作已取消")
                 return None
-    
+
     @staticmethod
     def _use_current_provider(provider_manager):
         """
         使用当前供应商
-        
+
         Returns:
             str: 当前供应商 ID 或 None
         """
@@ -151,12 +147,12 @@ class CLIInterface:
         else:
             print("❌ 没有当前供应商")
             return None
-    
+
     @staticmethod
     def _confirm_unconfigured_provider(provider) -> bool:
         """
         确认选择未配置的供应商
-        
+
         Returns:
             bool: True 表示确认，False 表示取消
         """
@@ -265,54 +261,129 @@ class CLIInterface:
         Returns:
             str: Excel 文件路径
         """
-        excel_files = [
-            f for f in os.listdir(".") if f.endswith(".xlsx") and os.path.isfile(f)
-        ]
+        excel_files = CLIInterface._get_local_excel_files()
 
         while True:
-            if excel_files:
-                print("\n当前目录下的 Excel 文件:")
-                for i, file_name in enumerate(excel_files):
-                    print(f"{i + 1}. {file_name}")
-                file_input = input("请输入 Excel 文件序号或直接输入文件路径: ")
-                try:
-                    file_index = int(file_input)
-                    if 1 <= file_index <= len(excel_files):
-                        excel_path = excel_files[file_index - 1]
-                    else:
-                        print(
-                            f"错误: 无效的文件序号 '{file_index}'。请重新输入。",
-                            file=sys.stderr,
-                        )
-                        continue
-                except ValueError:  # 用户输入的是路径
-                    excel_path = file_input
-            else:
-                excel_path = input(
-                    "当前目录下没有找到 Excel 文件。请输入包含问答内容的 Excel 文件路径: "
-                )
-
-            if not os.path.exists(excel_path):
-                print(
-                    f"错误: 文件 '{excel_path}' 不存在。请重新输入。", file=sys.stderr
-                )
+            # 获取用户输入的文件路径
+            excel_path = CLIInterface._get_user_file_input(excel_files)
+            if excel_path is None:
                 continue
 
-            try:
-                # 尝试读取文件以验证格式
-                import pandas as pd
+            # 验证文件存在性
+            if not CLIInterface._validate_file_exists(excel_path):
+                continue
 
-                try:
-                    pd.read_excel(excel_path, engine="openpyxl")
-                except Exception:
-                    pd.read_excel(excel_path, engine="xlrd")
+            # 验证文件格式
+            if CLIInterface._validate_excel_format(excel_path):
                 return excel_path
-            except Exception as e:
+
+    @staticmethod
+    def _get_local_excel_files() -> list:
+        """
+        获取当前目录下的Excel文件列表
+
+        Returns:
+            list: Excel文件列表
+        """
+        return [f for f in os.listdir(".") if f.endswith(".xlsx") and os.path.isfile(f)]
+
+    @staticmethod
+    def _get_user_file_input(excel_files: list) -> str:
+        """
+        获取用户输入的文件路径
+
+        Args:
+            excel_files: Excel文件列表
+
+        Returns:
+            str: 文件路径
+        """
+        if excel_files:
+            CLIInterface._display_excel_files(excel_files)
+            file_input = input("请输入 Excel 文件序号或直接输入文件路径: ")
+            return CLIInterface._parse_file_input(file_input, excel_files)
+        else:
+            return input(
+                "当前目录下没有找到 Excel 文件。请输入包含问答内容的 Excel 文件路径: "
+            )
+
+    @staticmethod
+    def _display_excel_files(excel_files: list):
+        """
+        显示Excel文件列表
+        """
+        print("\n当前目录下的 Excel 文件:")
+        for i, file_name in enumerate(excel_files):
+            print(f"{i + 1}. {file_name}")
+
+    @staticmethod
+    def _parse_file_input(file_input: str, excel_files: list) -> str:
+        """
+        解析用户输入的文件选择
+
+        Args:
+            file_input: 用户输入
+            excel_files: Excel文件列表
+
+        Returns:
+            str: 文件路径
+        """
+        try:
+            file_index = int(file_input)
+            if 1 <= file_index <= len(excel_files):
+                return excel_files[file_index - 1]
+            else:
                 print(
-                    f"错误: 无法读取 Excel 文件 '{excel_path}'。请确保文件格式正确且未被占用。错误信息: {e}。请重新输入。",
+                    f"错误: 无效的文件序号 '{file_index}'。请重新输入。",
                     file=sys.stderr,
                 )
-                continue
+                return None
+        except ValueError:  # 用户输入的是路径
+            return file_input
+
+    @staticmethod
+    def _validate_file_exists(excel_path: str) -> bool:
+        """
+        验证文件是否存在
+
+        Args:
+            excel_path: 文件路径
+
+        Returns:
+            bool: 文件存在返回True
+        """
+        if not os.path.exists(excel_path):
+            print(
+                f"错误: 文件 '{excel_path}' 不存在。请重新输入。", file=sys.stderr
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _validate_excel_format(excel_path: str) -> bool:
+        """
+        验证Excel文件格式
+
+        Args:
+            excel_path: 文件路径
+
+        Returns:
+            bool: 格式正确返回True
+        """
+        try:
+            import pandas as pd
+
+            try:
+                pd.read_excel(excel_path, engine="openpyxl")
+            except Exception:
+                pd.read_excel(excel_path, engine="xlrd")
+            return True
+        except Exception as e:
+            print(
+                f"错误: 无法读取 Excel 文件 '{excel_path}'。请确保文件格式正确且未被占用。错误信息: {e}。请重新输入。",
+                file=sys.stderr,
+            )
+            return False
 
     @staticmethod
     def get_knowledge_base_dir() -> str:

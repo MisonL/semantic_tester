@@ -240,7 +240,7 @@ class IflowProvider(AIProvider):
 
         # 尝试提取判断结果
         result, reason = self._extract_result_from_format(content)
-        
+
         # 备用解析：如果没有找到明确格式，尝试关键词匹配
         if result == "不确定":
             result = self._extract_result_by_keywords(content)
@@ -253,7 +253,7 @@ class IflowProvider(AIProvider):
     def _extract_result_from_format(self, content: str) -> tuple[str, str]:
         """
         从格式化内容中提取结果和原因
-        
+
         Returns:
             tuple[str, str]: (结果, 原因)
         """
@@ -271,13 +271,13 @@ class IflowProvider(AIProvider):
                     # 提取判断依据
                     reason = self._extract_reason_from_lines(lines, i, line)
                     break
-        
+
         return result, reason
-    
+
     def _extract_reason_from_lines(self, lines: list, current_index: int, current_line: str) -> str:
         """
         从行中提取判断依据
-        
+
         Returns:
             str: 判断依据
         """
@@ -290,39 +290,39 @@ class IflowProvider(AIProvider):
 
             if reason_lines:
                 return "\n".join(reason_lines)
-        
+
         # 如果没有后续行，使用当前行的剩余部分
         if "判断依据：" in current_line:
             return current_line.split("判断依据：")[-1].strip()
-        
+
         return ""
-    
+
     def _extract_result_by_keywords(self, content: str) -> str:
         """
         通过关键词匹配提取结果
-        
+
         Returns:
             str: 提取的结果
         """
         content_lower = content.lower()
-        
+
         positive_keywords = ["是", "符合", "一致", "正确", "能够推断"]
         negative_keywords = ["不是", "不符合", "不一致", "错误", "无法推断"]
-        
+
         has_positive = any(kw in content_lower for kw in positive_keywords)
         has_negative = any(kw in content_lower for kw in negative_keywords)
-        
+
         if has_positive and not has_negative:
             return "是"
         elif has_negative:
             return "否"
-        
+
         return "不确定"
-    
+
     def _clean_reason(self, reason: str) -> str:
         """
         清理判断依据
-        
+
         Returns:
             str: 清理后的判断依据
         """

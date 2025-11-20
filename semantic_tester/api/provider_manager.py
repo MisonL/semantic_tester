@@ -188,117 +188,144 @@ class ProviderManager:
         Returns:
             Optional[AIProvider]: 供应商实例，创建失败返回 None
         """
-        if provider_id == "gemini":
-            gemini_keys = self.config.get("gemini_api_keys", [])
-            gemini_model = self.config.get("gemini_model", "gemini-2.0-flash-exp")
+        # 供应商创建器映射
+        provider_creators = {
+            "gemini": self._create_gemini_provider,
+            "openai": self._create_openai_provider,
+            "anthropic": self._create_anthropic_provider,
+            "dify": self._create_dify_provider,
+            "iflow": self._create_iflow_provider,
+        }
 
-            if not gemini_keys:
-                logger.warning("Gemini API 密钥未配置，将创建未配置的供应商实例")
-
-            provider_config = {
-                "name": provider_name,
-                "id": provider_id,
-                "api_keys": gemini_keys,
-                "model": gemini_model,
-                **batch_config,
-            }
-            return GeminiProvider(provider_config)
-
-        elif provider_id == "openai":
-            openai_config = self.config.get("openai", {})
-            api_keys = openai_config.get("api_keys", [])
-            model = openai_config.get("model", "gpt-4o")
-            base_url = openai_config.get("base_url", "https://api.openai.com/v1")
-            has_config = openai_config.get("has_config", False)
-
-            if not has_config:
-                logger.warning(
-                    "OpenAI API 密钥未配置或为模板值，将创建未配置的供应商实例"
-                )
-
-            provider_config = {
-                "name": provider_name,
-                "id": provider_id,
-                "api_keys": api_keys,
-                "model": model,
-                "base_url": base_url,
-                "has_config": has_config,
-                **batch_config,
-            }
-            return OpenAIProvider(provider_config)
-
-        elif provider_id == "anthropic":
-            anthropic_config = self.config.get("anthropic", {})
-            api_keys = anthropic_config.get("api_keys", [])
-            model = anthropic_config.get("model", "claude-sonnet-4-20250514")
-            base_url = anthropic_config.get("base_url", "https://api.anthropic.com")
-            has_config = anthropic_config.get("has_config", False)
-
-            if not has_config:
-                logger.warning(
-                    "Anthropic API 密钥未配置或为模板值，将创建未配置的供应商实例"
-                )
-
-            provider_config = {
-                "name": provider_name,
-                "id": provider_id,
-                "api_keys": api_keys,
-                "model": model,
-                "base_url": base_url,
-                "has_config": has_config,
-                **batch_config,
-            }
-            return AnthropicProvider(provider_config)
-
-        elif provider_id == "dify":
-            dify_config = self.config.get("dify", {})
-            api_key = dify_config.get("api_key", "")
-            base_url = dify_config.get("base_url", "https://api.dify.ai/v1")
-            app_id = dify_config.get("app_id", "")
-            has_config = dify_config.get("has_config", bool(api_key))
-
-            if not has_config:
-                logger.warning(
-                    "Dify API 密钥未配置或为模板值，将创建未配置的供应商实例"
-                )
-
-            provider_config = {
-                "name": provider_name,
-                "id": provider_id,
-                "api_key": api_key,
-                "base_url": base_url,
-                "app_id": app_id,
-                "has_config": has_config,
-                **batch_config,
-            }
-            return DifyProvider(provider_config)
-
-        elif provider_id == "iflow":
-            iflow_config = self.config.get("iflow", {})
-            api_key = iflow_config.get("api_key", "")
-            model = iflow_config.get("model", "qwen3-max")
-            base_url = iflow_config.get("base_url", "https://apis.iflow.cn/v1")
-            has_config = iflow_config.get("has_config", False)
-
-            if not has_config:
-                logger.warning(
-                    "iFlow API 密钥未配置或为模板值，将创建未配置的供应商实例"
-                )
-
-            provider_config = {
-                "name": provider_name,
-                "id": provider_id,
-                "api_key": api_key,
-                "model": model,
-                "base_url": base_url,
-                "has_config": has_config,
-                **batch_config,
-            }
-            return IflowProvider(provider_config)
-
+        creator = provider_creators.get(provider_id)
+        if creator:
+            return creator(provider_name, batch_config)
         else:
             logger.warning(f"未知的供应商 ID: {provider_id}")
             return None
+
+    def _create_gemini_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> GeminiProvider:
+        """
+        创建 Gemini 供应商实例
+        """
+        gemini_keys = self.config.get("gemini_api_keys", [])
+        gemini_model = self.config.get("gemini_model", "gemini-2.0-flash-exp")
+
+        if not gemini_keys:
+            logger.warning("Gemini API 密钥未配置，将创建未配置的供应商实例")
+
+        provider_config = {
+            "name": provider_name,
+            "id": "gemini",
+            "api_keys": gemini_keys,
+            "model": gemini_model,
+            **batch_config,
+        }
+        return GeminiProvider(provider_config)
+
+    def _create_openai_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> OpenAIProvider:
+        """
+        创建 OpenAI 供应商实例
+        """
+        openai_config = self.config.get("openai", {})
+        api_keys = openai_config.get("api_keys", [])
+        model = openai_config.get("model", "gpt-4o")
+        base_url = openai_config.get("base_url", "https://api.openai.com/v1")
+        has_config = openai_config.get("has_config", False)
+
+        if not has_config:
+            logger.warning(
+                "OpenAI API 密钥未配置或为模板值，将创建未配置的供应商实例"
+            )
+
+        provider_config = {
+            "name": provider_name,
+            "id": "openai",
+            "api_keys": api_keys,
+            "model": model,
+            "base_url": base_url,
+            "has_config": has_config,
+            **batch_config,
+        }
+        return OpenAIProvider(provider_config)
+
+    def _create_anthropic_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> AnthropicProvider:
+        """
+        创建 Anthropic 供应商实例
+        """
+        anthropic_config = self.config.get("anthropic", {})
+        api_keys = anthropic_config.get("api_keys", [])
+        model = anthropic_config.get("model", "claude-sonnet-4-20250514")
+        base_url = anthropic_config.get("base_url", "https://api.anthropic.com")
+        has_config = anthropic_config.get("has_config", False)
+
+        if not has_config:
+            logger.warning(
+                "Anthropic API 密钥未配置或为模板值，将创建未配置的供应商实例"
+            )
+
+        provider_config = {
+            "name": provider_name,
+            "id": "anthropic",
+            "api_keys": api_keys,
+            "model": model,
+            "base_url": base_url,
+            "has_config": has_config,
+            **batch_config,
+        }
+        return AnthropicProvider(provider_config)
+
+    def _create_dify_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> DifyProvider:
+        """
+        创建 Dify 供应商实例
+        """
+        dify_config = self.config.get("dify", {})
+        api_key = dify_config.get("api_key", "")
+        base_url = dify_config.get("base_url", "https://api.dify.ai/v1")
+        app_id = dify_config.get("app_id", "")
+        has_config = dify_config.get("has_config", bool(api_key))
+
+        if not has_config:
+            logger.warning(
+                "Dify API 密钥未配置或为模板值，将创建未配置的供应商实例"
+            )
+
+        provider_config = {
+            "name": provider_name,
+            "id": "dify",
+            "api_key": api_key,
+            "base_url": base_url,
+            "app_id": app_id,
+            "has_config": has_config,
+            **batch_config,
+        }
+        return DifyProvider(provider_config)
+
+    def _create_iflow_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> IflowProvider:
+        """
+        创建 iFlow 供应商实例
+        """
+        iflow_config = self.config.get("iflow", {})
+        api_key = iflow_config.get("api_key", "")
+        model = iflow_config.get("model", "qwen3-max")
+        base_url = iflow_config.get("base_url", "https://apis.iflow.cn/v1")
+        has_config = iflow_config.get("has_config", False)
+
+        if not has_config:
+            logger.warning(
+                "iFlow API 密钥未配置或为模板值，将创建未配置的供应商实例"
+            )
+
+        provider_config = {
+            "name": provider_name,
+            "id": "iflow",
+            "api_key": api_key,
+            "model": model,
+            "base_url": base_url,
+            "has_config": has_config,
+            **batch_config,
+        }
+        return IflowProvider(provider_config)
 
     def get_available_providers(self) -> List[Dict[str, Any]]:
         """
