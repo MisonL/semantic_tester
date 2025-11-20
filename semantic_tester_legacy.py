@@ -440,7 +440,6 @@ def check_semantic_similarity(
     使用Gemini API判断AI客服回答与源文档在语义上是否相符，并返回判断结果和原因。
     使用GeminiAPIHandler处理API调用和密钥轮转。
     """
-    response_text = ""  # 初始化response_text
     max_retries = 5  # API调用重试次数
     default_retry_delay = 60  # 默认等待时间（秒）
 
@@ -452,21 +451,11 @@ def check_semantic_similarity(
         client = gemini_api_handler.get_client()
 
         if not client:
-            logger.warning(
-                f"Gemini客户端未成功初始化或无可用密钥，跳过API调用 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})。"
-            )  # 增加问题点信息
-            if attempt < max_retries - 1:
-                # 如果没有可用密钥，等待一段时间再重试
-                logger.info(
-                    f"等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...')。"
-                )  # 增加问题点信息
-                time.sleep(default_retry_delay)
-                continue
-            else:
-                logger.error(
-                    f"多次尝试后仍无可用Gemini模型，语义比对失败 (问题: '{question[:50]}...')。"
-                )
+            if not _handle_no_client_legacy(
+                question, attempt, max_retries, default_retry_delay
+            ):
                 return "错误", "无可用Gemini模型"
+            continue
 
         prompt = gemini_api_handler.get_prompt(
             question, ai_answer, source_document_content
@@ -481,171 +470,42 @@ def check_semantic_similarity(
         waiting_thread.start()
 
         try:
-            try:
-                logger.info(
-                    f"正在调用Gemini API进行语义比对 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})..."
-                )  # 增加问题点信息
-                # 使用新SDK生成内容（使用正确的配置类型）
-                response = client.models.generate_content(
-                    model=gemini_api_handler.model_name,
-                    contents=[prompt],
-                    config=types.GenerateContentConfig(temperature=0),
-                )
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
-                logger.info(
-                    f"Gemini API调用完成，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...')。"
-                )  # 增加问题点信息
+            result, reason = _call_gemini_api_legacy(
+                client,
+                gemini_api_handler,
+                prompt,
+                question,
+                attempt,
+                max_retries,
+                start_time,
+                default_retry_delay,
+            )
+            if result != "RETRY":
+                return result, reason
 
-                # 确保响应有效
-                if response is None or response.text is None:
-                    logger.warning("Gemini API返回空响应")
-                    return "错误", "API返回空响应"
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(
+                f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {time.time() - start_time:.2f} 秒"
+            )  # 增加问题点信息
+            logger.debug(
+                f"完整错误信息: {str(e)}", exc_info=True
+            )  # 添加详细错误日志
 
-                # 尝试解析Gemini返回的JSON
-                response_text = response.text.strip()
-                # 移除可能存在的Markdown代码块标记
-                if response_text.startswith("```json") and response_text.endswith(
-                    "```"
-                ):
-                    response_text = response_text[7:-3].strip()
-
-                try:
-                    parsed_response = json.loads(response_text)
-                    result = parsed_response.get("result", "无法判断").strip()
-                    reason = parsed_response.get("reason", "无").strip()
-
-                    # 根据结果设置颜色和加粗
-                    colored_result = result
-                    if result == "是":
-                        colored_result = (
-                            Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
-                        )
-                    elif result == "否":
-                        colored_result = (
-                            Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
-                        )
-
-                    logger.info(
-                        f"语义比对结果：{colored_result} (问题: '{question[:50]}...')"
-                    )  # 增加问题点信息
-                    return result, reason
-                except json.JSONDecodeError as e:
-                    logger.warning(f"解析JSON失败: {response_text}, 错误: {e}")
-                    return "错误", f"JSON解析失败: {e}"
-
-            except json.JSONDecodeError as e:
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
+            # 非速率限制错误，也进行重试（可能是其他临时网络问题）
+            if attempt < max_retries - 1:
                 logger.warning(
-                    f"Gemini返回的JSON格式不正确：{response_text}，错误：{e}，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...')。"
+                    f"非速率限制错误，等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...)。"
                 )  # 增加问题点信息
-                # JSON解析错误通常不是临时错误，不进行重试
-                return "错误", f"JSON解析错误: {e}"
-
-            except google.api_core.exceptions.ResourceExhausted as e:
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
-                error_msg = str(e)
-                logger.warning(
-                    f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
-                )  # 增加问题点信息
-
-                retry_after = default_retry_delay
-                # 尝试从异常对象本身或其details属性中提取retryDelay
-                details = getattr(
-                    e, "details", []
-                )  # 尝试获取details属性，如果不存在则为空列表
-                if not details and hasattr(
-                    e, "message"
-                ):  # 如果details为空，尝试解析错误消息字符串
-                    # 尝试从错误消息字符串中解析retryDelay
-                    retry_delay_match = re.search(r"'retryDelay': '(\d+)s'", error_msg)
-                    if retry_delay_match:
-                        try:
-                            retry_after = (
-                                int(retry_delay_match.group(1)) + 5
-                            )  # 增加5秒缓冲
-                            logger.info(
-                                f"从错误消息中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...')。"
-                            )  # 增加问题点信息
-                        except ValueError:
-                            logger.warning(
-                                f"无法解析错误消息中的retryDelay。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...')。"
-                            )  # 增加问题点信息
-                            retry_after = default_retry_delay
-                    else:
-                        logger.warning(
-                            f"未在错误详情或错误消息中找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...')。"
-                        )  # 增加问题点信息
-                        retry_after = default_retry_delay
-                else:  # 如果details不为空，遍历details查找retryDelay
-                    found_retry_delay = False
-                    for detail in details:
-                        # 假设detail是ErrorInfo对象或类似结构
-                        if hasattr(detail, "retry_delay") and hasattr(
-                            detail.retry_delay, "seconds"
-                        ):
-                            retry_after = detail.retry_delay.seconds
-                            logger.info(
-                                f"从API错误详情中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...')。"
-                            )  # 增加问题点信息
-                            found_retry_delay = True
-                            break
-                    if not found_retry_delay:
-                        logger.warning(
-                            f"在错误详情中未找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...')。"
-                        )  # 增加问题点信息
-                        retry_after = default_retry_delay
-
-                if attempt < max_retries - 1:
-                    logger.info(
-                        f"检测到429错误，立即强制轮转到下一个密钥 (问题: '{question[:50]}...')。"
-                    )  # 增加问题点信息
-                    # 更新当前密钥的冷却时间
-                    current_key = gemini_api_handler.api_keys[
-                        gemini_api_handler.current_key_index
-                    ]
-                    gemini_api_handler.key_cooldown_until[current_key] = (
-                        time.time() + retry_after
-                    )
-                    gemini_api_handler.rotate_key(
-                        force_rotate=True
-                    )  # 强制轮转到下一个密钥
-                    continue  # 重试当前记录
-                else:
-                    logger.error(
-                        f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
-                    )
-                    return "错误", f"API调用多次重试失败: {error_msg}"
-
-            except Exception as e:
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
-                error_msg = str(e)
+                time.sleep(default_retry_delay)
+                # 强制轮转到下一个密钥并在下一次循环开始时使用
+                gemini_api_handler.rotate_key(force_rotate=True)
+                continue  # 重试当前记录
+            else:
                 logger.error(
-                    f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
-                )  # 增加问题点信息
-                logger.debug(
-                    f"完整错误信息: {str(e)}", exc_info=True
-                )  # 添加详细错误日志
-
-                # 非速率限制错误，也进行重试（可能是其他临时网络问题）
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        f"非速率限制错误，等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...')。"
-                    )  # 增加问题点信息
-                    time.sleep(default_retry_delay)
-                    # 强制轮转到下一个密钥并在下一次循环开始时使用
-                    gemini_api_handler.rotate_key(force_rotate=True)
-                    continue  # 重试当前记录
-                else:
-                    logger.error(
-                        f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
-                    )
-                    return "错误", f"API调用多次重试失败: {error_msg}"
-
-        finally:
+                    f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
+                )
+                return "错误", f"API调用多次重试失败: {error_msg}"
             # 确保停止等待指示器
             stop_event.set()
             if waiting_thread.is_alive():
@@ -653,6 +513,225 @@ def check_semantic_similarity(
 
     # 如果所有重试都失败
     return "错误", "API调用多次重试失败"
+
+
+def _handle_no_client_legacy(
+    question: str, attempt: int, max_retries: int, default_retry_delay: int
+) -> bool:
+    """
+    处理无可用客户端的情况
+
+    Returns:
+        bool: True 表示需要重试，False 表示应该返回错误
+    """
+    logger.warning(
+        f"Gemini客户端未成功初始化或无可用密钥，跳过API调用 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})。"
+    )  # 增加问题点信息
+    if attempt < max_retries - 1:
+        # 如果没有可用密钥，等待一段时间再重试
+        logger.info(
+            f"等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...')。"
+        )  # 增加问题点信息
+        time.sleep(default_retry_delay)
+        return True
+    else:
+        logger.error(
+            f"多次尝试后仍无可用Gemini模型，语义比对失败 (问题: '{question[:50]}...')。"
+        )
+        return False
+
+
+def _call_gemini_api_legacy(
+    client,
+    gemini_api_handler: GeminiAPIHandler,
+    prompt: str,
+    question: str,
+    attempt: int,
+    max_retries: int,
+    start_time: float,
+    default_retry_delay: int,
+) -> tuple[str, str]:
+    """
+    调用 Gemini API 并处理响应
+
+    Returns:
+        tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
+    """
+    try:
+        logger.info(
+            f"正在调用Gemini API进行语义比对 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})..."
+        )  # 增加问题点信息
+        # 使用新SDK生成内容（使用正确的配置类型）
+        response = client.models.generate_content(
+            model=gemini_api_handler.model_name,
+            contents=[prompt],
+            config=types.GenerateContentConfig(temperature=0),
+        )
+        end_time = time.time()  # 记录API调用结束时间
+        duration = end_time - start_time  # 计算耗时
+        logger.info(
+            f"Gemini API调用完成，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...')。"
+        )  # 增加问题点信息
+
+        # 确保响应有效
+        if response is None or response.text is None:
+            logger.warning("Gemini API返回空响应")
+            return "错误", "API返回空响应"
+
+        # 尝试解析Gemini返回的JSON
+        response_text = response.text.strip()
+        # 移除可能存在的Markdown代码块标记
+        if response_text.startswith("```json") and response_text.endswith(
+            "```"
+        ):
+            response_text = response_text[7:-3].strip()
+
+        try:
+            parsed_response = json.loads(response_text)
+            result = parsed_response.get("result", "无法判断").strip()
+            reason = parsed_response.get("reason", "无").strip()
+
+            # 根据结果设置颜色和加粗
+            colored_result = result
+            if result == "是":
+                colored_result = (
+                    Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
+                )
+            elif result == "否":
+                colored_result = (
+                    Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
+                )
+
+            logger.info(
+                f"语义比对结果：{colored_result} (问题: '{question[:50]}...')"
+            )  # 增加问题点信息
+            return result, reason
+        except json.JSONDecodeError as e:
+            logger.warning(f"解析JSON失败: {response_text}, 错误: {e}")
+            return "错误", f"JSON解析失败: {e}"
+
+    except json.JSONDecodeError as e:
+        end_time = time.time()  # 记录API调用结束时间
+        duration = end_time - start_time  # 计算耗时
+        logger.warning(
+            f"Gemini返回的JSON格式不正确，错误：{e}，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...)。"
+        )  # 增加问题点信息
+        # JSON解析错误通常不是临时错误，不进行重试
+        return "错误", f"JSON解析错误: {e}"
+
+    except google.api_core.exceptions.ResourceExhausted as e:
+        return _handle_rate_limit_error_legacy(
+            e,
+            gemini_api_handler,
+            question,
+            attempt,
+            max_retries,
+            start_time,
+            default_retry_delay,
+        )
+
+
+def _handle_rate_limit_error_legacy(
+    e,
+    gemini_api_handler: GeminiAPIHandler,
+    question: str,
+    attempt: int,
+    max_retries: int,
+    start_time: float,
+    default_retry_delay: int,
+) -> tuple[str, str]:
+    """
+    处理速率限制错误 (429)
+
+    Returns:
+        tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
+    """
+    end_time = time.time()  # 记录API调用结束时间
+    duration = end_time - start_time  # 计算耗时
+    error_msg = str(e)
+    logger.warning(
+        f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+    )  # 增加问题点信息
+
+    retry_after = _extract_retry_delay_from_error_legacy(e, default_retry_delay, question)
+
+    if attempt < max_retries - 1:
+        logger.info(
+            f"检测到429错误，立即强制轮转到下一个密钥 (问题: '{question[:50]}...)。"
+        )  # 增加问题点信息
+        # 更新当前密钥的冷却时间
+        current_key = gemini_api_handler.api_keys[
+            gemini_api_handler.current_key_index
+        ]
+        gemini_api_handler.key_cooldown_until[current_key] = (
+            time.time() + retry_after
+        )
+        gemini_api_handler.rotate_key(
+            force_rotate=True
+        )  # 强制轮转到下一个密钥
+        return "RETRY", ""  # 重试当前记录
+    else:
+        logger.error(
+            f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
+        )
+        return "错误", f"API调用多次重试失败: {error_msg}"
+
+
+def _extract_retry_delay_from_error_legacy(
+    e, default_retry_delay: int, question: str
+) -> int:
+    """
+    从错误中提取重试延迟时间
+
+    Returns:
+        int: 重试延迟时间（秒）
+    """
+    retry_after = default_retry_delay
+    error_msg = str(e)
+
+    # 尝试从异常对象本身或其details属性中提取retryDelay
+    details = getattr(e, "details", [])  # 尝试获取details属性，如果不存在则为空列表
+    if not details and hasattr(e, "message"):  # 如果details为空，尝试解析错误消息字符串
+        # 尝试从错误消息字符串中解析retryDelay
+        retry_delay_match = re.search(r"'retryDelay': '(\d+)s'", error_msg)
+        if retry_delay_match:
+            try:
+                retry_after = (
+                    int(retry_delay_match.group(1)) + 5
+                )  # 增加5秒缓冲
+                logger.info(
+                    f"从错误消息中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...)。"
+                )  # 增加问题点信息
+            except ValueError:
+                logger.warning(
+                    f"无法解析错误消息中的retryDelay。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
+                )  # 增加问题点信息
+                retry_after = default_retry_delay
+        else:
+            logger.warning(
+                f"未在错误详情或错误消息中找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
+            )  # 增加问题点信息
+            retry_after = default_retry_delay
+    else:  # 如果details不为空，遍历details查找retryDelay
+        found_retry_delay = False
+        for detail in details:
+            # 假设detail是ErrorInfo对象或类似结构
+            if hasattr(detail, "retry_delay") and hasattr(
+                detail.retry_delay, "seconds"
+            ):
+                retry_after = detail.retry_delay.seconds
+                logger.info(
+                    f"从API错误详情中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...)。"
+                )  # 增加问题点信息
+                found_retry_delay = True
+                break
+        if not found_retry_delay:
+            logger.warning(
+                f"在错误详情中未找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
+            )  # 增加问题点信息
+            retry_after = default_retry_delay
+
+    return retry_after
 
 
 def _check_api_keys():
@@ -974,13 +1053,70 @@ def main():
     print(f"知识库目录: {knowledge_base_dir}")
     print("=" * 60)
 
-    # 使用 Gemini API 进行语义比对
+    # 处理数据行
+    df = _process_data_rows(
+        df, col_indices, knowledge_base_dir, gemini_api_handler,
+        similarity_result_col_index, reason_col_index, show_comparison_result
+    )
+
+    # 保存结果
+    _save_results(df, excel_path)
+    similarity_result_col_input = (
+        input(
+            "请输入要保存结果的列名或序号 (例如: '语义是否与源文档相符' 或直接输入新列名，默认: '语义是否与源文档相符'): "
+        )
+        or "语义是否与源文档相符"
+    )
+    get_or_add_column(df, column_names, similarity_result_col_input)
+
+    # --- 获取“判断依据”结果保存列 ---
+    print("\n请选择“判断依据”结果保存列:")
+    print("现有列名:")
+    for i, col_name in enumerate(column_names):
+        print(f"{i + 1}. {col_name}")
+    reason_col_input = (
+        input(
+            "请输入要保存结果的列名或序号 (例如: '判断依据' 或直接输入新列名，默认: '判断依据'): "
+        )
+        or "判断依据"
+    )
+    get_or_add_column(df, column_names, reason_col_input)
+
+    # --- 询问是否在控制台显示每个问题的比对结果 ---
+    display_result_choice = input(
+        "是否在控制台显示每个问题的比对结果？ (y/N，默认: N): "
+    ).lower()
+    show_comparison_result = display_result_choice == "y"
+
+    # 检查结果输出路径，如果用户没有指定，则使用默认值
+    # output_excel_path = input(
+    #     f"请输入结果Excel文件的保存路径 (默认: {excel_path.replace('.xlsx', '_评估结果.xlsx')}): "
+    # ) or excel_path.replace(".xlsx", "_评估结果.xlsx")
+
+    # 检查结果列是否存在，如果不存在则创建，并指定dtype为object
+    if similarity_result_col_input not in df.columns:
+        df[similarity_result_col_input] = pd.Series(dtype="object")
+    # try:
+    #     df.to_excel(output_excel_path, index=False)
+    #     logger.info(f"所有 {total_records} 条记录处理完成，最终结果已保存到 {output_excel_path}。")
+    # except Exception as e:
+    #     logger.error(f"保存最终结果到Excel文件时发生错误：{output_excel_path} - {e}")
+
+
+def _process_data_rows(
+    df, col_indices, knowledge_base_dir, gemini_api_handler,
+    similarity_result_col_index, reason_col_index, show_comparison_result
+):
+    """处理数据行"""
+    total_records = len(df)
+    logger.info(f"共需处理 {total_records} 条问答记录。")
+
     for idx, row in df.iterrows():
         try:
             doc_name_col_index = col_indices["doc_name_col_index"]
             question_col_index = col_indices["question_col_index"]
             ai_answer_col_index = col_indices["ai_answer_col_index"]
-            
+
             doc_name = (
                 str(row.iloc[doc_name_col_index]).strip()
                 if pd.notna(row.iloc[doc_name_col_index])
@@ -1016,7 +1152,7 @@ def main():
 
             # 使用 Gemini API 进行语义比对
             similarity_result, reason = check_semantic_similarity(
-                question, ai_answer, source_content, gemini_api_handler
+                gemini_api_handler, question, ai_answer, source_content
             )
 
             # 保存结果到DataFrame
@@ -1041,166 +1177,15 @@ def main():
             logger.error(f"处理第 {idx + 1} 条数据时发生错误: {e}")
             continue
 
-    # 保存处理结果到新的Excel文件
+    return df
+
+
+def _save_results(df, excel_path):
+    """保存处理结果"""
     output_path = excel_path.replace(".xlsx", "_处理后.xlsx")
     df.to_excel(output_path, index=False)
     print(f"\n处理完成！结果已保存到: {output_path}")
-    similarity_result_col_input = (
-        input(
-            "请输入要保存结果的列名或序号 (例如: '语义是否与源文档相符' 或直接输入新列名，默认: '语义是否与源文档相符'): "
-        )
-        or "语义是否与源文档相符"
-    )
-    get_or_add_column(df, column_names, similarity_result_col_input)
-
-    # --- 获取“判断依据”结果保存列 ---
-    print("\n请选择“判断依据”结果保存列:")
-    print("现有列名:")
-    for i, col_name in enumerate(column_names):
-        print(f"{i + 1}. {col_name}")
-    reason_col_input = (
-        input(
-            "请输入要保存结果的列名或序号 (例如: '判断依据' 或直接输入新列名，默认: '判断依据'): "
-        )
-        or "判断依据"
-    )
-    get_or_add_column(df, column_names, reason_col_input)
-
-    # --- 询问是否在控制台显示每个问题的比对结果 ---
-    display_result_choice = input(
-        "是否在控制台显示每个问题的比对结果？ (y/N，默认: N): "
-    ).lower()
-    show_comparison_result = display_result_choice == "y"
-
-    # 检查结果输出路径，如果用户没有指定，则使用默认值
-    output_excel_path = input(
-        f"请输入结果Excel文件的保存路径 (默认: {excel_path.replace('.xlsx', '_评估结果.xlsx')}): "
-    ) or excel_path.replace(".xlsx", "_评估结果.xlsx")
-
-    # 检查结果列是否存在，如果不存在则创建，并指定dtype为object
-    if similarity_result_col_input not in df.columns:
-        df[similarity_result_col_input] = pd.Series(dtype="object")
-    if reason_col_input not in df.columns:
-        df[reason_col_input] = pd.Series(dtype="object")
-
-    # 强制转换列的dtype为object，确保能够存储字符串，解决FutureWarning
-    df[similarity_result_col_input] = df[similarity_result_col_input].astype("object")
-    df[reason_col_input] = df[reason_col_input].astype("object")
-
-    total_records = len(df)
-    logger.info(f"共需处理 {total_records} 条问答记录。")
-
-    # 单线程顺序处理
-    for row_index, (index, row) in enumerate(df.iterrows()):
-        row_number = row_index + 1
-
-        # 显示处理进度
-        logger.info(f"正在处理第 {row_number}/{total_records} 条记录...")
-
-        doc_name = (
-            str(row.iloc[doc_name_col_index]).strip()
-            if pd.notna(row.iloc[doc_name_col_index])
-            else "未知文档"
-        )
-        question = (
-            str(row.iloc[question_col_index]).strip()
-            if pd.notna(row.iloc[question_col_index])
-            else ""
-        )
-        ai_answer = (
-            str(row.iloc[ai_answer_col_index]).strip()
-            if pd.notna(row.iloc[ai_answer_col_index])
-            else ""
-        )
-
-        # 检查关键字段是否为空
-        if not question or not ai_answer:
-            logger.warning(
-                f"跳过第 {row_number}/{total_records} 条记录：问题或AI客服回答为空。"
-            )
-            df.at[index, similarity_result_col_input] = "跳过"
-            df.at[index, reason_col_input] = "问题或AI客服回答为空"
-            # 每处理一条记录（包括跳过的）都检查是否需要保存中间结果
-            try:
-                df.to_excel(output_excel_path, index=False)
-                logger.info(
-                    f"已保存中间结果到 {output_excel_path} (已处理 {row_number} 条记录)。"
-                )
-            except Exception as e:
-                logger.error(
-                    f"保存中间结果到Excel文件时发生错误：{output_excel_path} - {e}"
-                )
-            continue  # 跳过当前记录
-
-        logger.info(f"正在处理记录 (文档: {doc_name}, 问题: '{question[:50]}...')")
-
-        md_file_path = os.path.join(knowledge_base_dir, doc_name)
-        source_document_content = None
-
-        if os.path.exists(md_file_path):
-            try:
-                with open(md_file_path, "r", encoding="utf-8") as f:
-                    source_document_content = f.read()
-            except Exception as e:
-                df.at[index, similarity_result_col_input] = "读取源文档错误"
-                df.at[index, reason_col_input] = f"读取Markdown文件时发生错误: {e}"
-                logger.error(f"错误：读取Markdown文件时发生错误：{md_file_path} - {e}")
-                # 每处理一条记录（包括错误的）都检查是否需要保存中间结果
-                try:
-                    df.to_excel(output_excel_path, index=False)
-                    logger.info(
-                        f"已保存中间结果到 {output_excel_path} (已处理 {row_number} 条记录)。"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"保存中间结果到Excel文件时发生错误：{output_excel_path} - {e}"
-                    )
-                continue  # 跳过当前记录
-
-            # 调用语义比对函数
-            similarity_result, reason = check_semantic_similarity(
-                gemini_api_handler, question, ai_answer, source_document_content
-            )
-
-            # 更新DataFrame
-            df.at[index, similarity_result_col_input] = similarity_result
-            df.at[index, reason_col_input] = reason
-
-            # 根据结果设置颜色和加粗
-            if show_comparison_result:  # 根据用户选择是否显示
-                colored_similarity_result = similarity_result
-                if similarity_result == "是":
-                    colored_similarity_result = (
-                        Style.BRIGHT + Fore.GREEN + similarity_result + Style.RESET_ALL
-                    )
-                elif similarity_result == "否":
-                    colored_similarity_result = (
-                        Style.BRIGHT + Fore.RED + similarity_result + Style.RESET_ALL
-                    )
-                logger.info(
-                    f"第 {row_number}/{total_records} 条记录处理完成。结果: {colored_similarity_result}"
-                )
-
-        else:
-            df.at[index, similarity_result_col_input] = "源文档未找到"
-            df.at[index, reason_col_input] = f"未找到对应的Markdown文件：{doc_name}"
-            logger.warning(f"警告：未找到对应的Markdown文件：{md_file_path}")
-
-        # 每处理完一条记录就保存结果
-        try:
-            df.to_excel(output_excel_path, index=False)
-            logger.info(
-                f"已保存结果到 {output_excel_path} (已处理 {row_number} 条记录)。"
-            )
-        except Exception as e:
-            logger.error(f"保存结果到Excel文件时发生错误：{output_excel_path} - {e}")
-
-    # 所有记录处理完成后，保存最终结果 (此处已在循环中每条保存，最终保存可省略或作为额外保险)
-    # try:
-    #     df.to_excel(output_excel_path, index=False)
-    #     logger.info(f"所有 {total_records} 条记录处理完成，最终结果已保存到 {output_excel_path}。")
-    # except Exception as e:
-    #     logger.error(f"保存最终结果到Excel文件时发生错误：{output_excel_path} - {e}")
+    return output_path
 
 
 if __name__ == "__main__":

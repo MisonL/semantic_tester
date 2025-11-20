@@ -274,40 +274,11 @@ AI客服回答：
         """
         try:
             # 尝试提取判断结果和判断依据
-            lines = response.strip().split("\n")
-            result = ""
-            reason = ""
-
-            for line in lines:
-                line = line.strip()
-                if line.startswith("判断结果："):
-                    result_part = line.replace("判断结果：", "").strip()
-                    if "是" in result_part:
-                        result = "是"
-                    elif "否" in result_part:
-                        result = "否"
-                    else:
-                        result = result_part
-                elif line.startswith("判断依据："):
-                    reason = line.replace("判断依据：", "").strip()
-                elif reason and line:  # 如果已经找到判断依据，继续收集后续内容
-                    reason += " " + line
+            result, reason = self._extract_result_and_reason(response)
 
             # 如果没有找到标准格式，尝试其他解析方式
             if not result:
-                if "判断结果：是" in response.lower() or "结果：是" in response.lower():
-                    result = "是"
-                elif "判断结果：否" in response or "结果：否" in response:
-                    result = "否"
-                else:
-                    # 尝试从第一行提取结果
-                    first_line = lines[0].strip() if lines else ""
-                    if "是" in first_line and "否" not in first_line:
-                        result = "是"
-                    elif "否" in first_line:
-                        result = "否"
-                    else:
-                        result = "无法确定"
+                result = self._fallback_result_extraction(response)
 
             if not reason:
                 # 如果没有找到判断依据，使用整个回答作为依据
@@ -318,14 +289,7 @@ AI客服回答：
             reason = reason.strip()
 
             # 验证结果有效性
-            if result not in ["是", "否"]:
-                logger.warning(f"Dify 返回的判断结果无效: {result}")
-                if "是" in reason and "否" not in reason:
-                    result = "是"
-                elif "否" in reason:
-                    result = "否"
-                else:
-                    result = "无法确定"
+            result = self._validate_result(result, reason)
 
             logger.debug(f"Dify 结果解析: 结果={result}, 依据长度={len(reason)}")
             return result, reason
@@ -333,6 +297,74 @@ AI客服回答：
         except Exception as e:
             logger.error(f"解析 Dify 回答时出错: {e}")
             return "错误", f"解析回答失败: {str(e)}"
+
+    def _extract_result_and_reason(self, response: str) -> tuple[str, str]:
+        """
+        从响应中提取结果和原因
+
+        Returns:
+            tuple[str, str]: (结果, 原因)
+        """
+        lines = response.strip().split("\n")
+        result = ""
+        reason = ""
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith("判断结果："):
+                result_part = line.replace("判断结果：", "").strip()
+                if "是" in result_part:
+                    result = "是"
+                elif "否" in result_part:
+                    result = "否"
+                else:
+                    result = result_part
+            elif line.startswith("判断依据："):
+                reason = line.replace("判断依据：", "").strip()
+            elif reason and line:  # 如果已经找到判断依据，继续收集后续内容
+                reason += " " + line
+
+        return result, reason
+
+    def _fallback_result_extraction(self, response: str) -> str:
+        """
+        备用结果提取方法
+
+        Returns:
+            str: 提取的结果
+        """
+        if "判断结果：是" in response.lower() or "结果：是" in response.lower():
+            return "是"
+        elif "判断结果：否" in response or "结果：否" in response:
+            return "否"
+        else:
+            # 尝试从第一行提取结果
+            lines = response.strip().split("\n")
+            first_line = lines[0].strip() if lines else ""
+            if "是" in first_line and "否" not in first_line:
+                return "是"
+            elif "否" in first_line:
+                return "否"
+            else:
+                return "无法确定"
+
+    def _validate_result(self, result: str, reason: str) -> str:
+        """
+        验证结果的有效性
+
+        Returns:
+            str: 验证后的结果
+        """
+        if result not in ["是", "否"]:
+            logger.warning(f"Dify 返回的判断结果无效: {result}")
+            if "是" in reason and "否" not in reason:
+                result = "是"
+            elif "否" in reason:
+                result = "否"
+            else:
+                result = "无法确定"
+
+        return result
 
     def get_provider_info(self) -> Dict[str, Any]:
         """获取供应商信息"""

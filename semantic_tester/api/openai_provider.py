@@ -130,7 +130,6 @@ class OpenAIProvider(AIProvider):
         default_retry_delay = 30
 
         for attempt in range(max_retries):
-            start_time = time.time()
 
             # 创建等待指示器
             stop_event = threading.Event()
@@ -141,116 +140,11 @@ class OpenAIProvider(AIProvider):
             waiting_thread.start()
 
             try:
-                logger.info(
-                    f"正在调用 OpenAI API 进行语义比对 (尝试 {attempt + 1}/{max_retries})..."
+                result, reason = self._call_openai_api(
+                    model_to_use, prompt, attempt, max_retries, default_retry_delay
                 )
-
-                # 获取可用客户端
-                if not self._get_available_client():
-                    logger.warning("无可用 OpenAI 客户端，跳过 API 调用")
-                    if attempt < max_retries - 1:
-                        time.sleep(default_retry_delay)
-                        continue
-                    else:
-                        return "错误", "无可用 OpenAI 模型"
-
-                response = self.client.chat.completions.create(
-                    model=model_to_use,
-                    messages=[
-                        {"role": "system", "content": "你是一个专业的语义分析助手。"},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0,
-                    max_tokens=1000,
-                )
-
-                end_time = time.time()
-                duration = end_time - start_time
-                logger.info(f"OpenAI API 调用完成，耗时: {duration:.2f} 秒")
-
-                if not response.choices or not response.choices[0].message.content:
-                    logger.warning("OpenAI API 返回空响应")
-                    return "错误", "API 返回空响应"
-
-                response_text = response.choices[0].message.content.strip()
-
-                # 尝试解析 JSON 响应
-                try:
-                    # 如果响应包含代码块，提取其中的 JSON
-                    if response_text.startswith("```json") and response_text.endswith(
-                        "```"
-                    ):
-                        response_text = response_text[7:-3].strip()
-                    elif response_text.startswith("```") and response_text.endswith(
-                        "```"
-                    ):
-                        response_text = response_text[3:-3].strip()
-
-                    parsed_response = json.loads(response_text)
-                    result = parsed_response.get("result", "无法判断").strip()
-                    reason = parsed_response.get("reason", "无").strip()
-
-                    colored_result = result
-                    if result == "是":
-                        colored_result = (
-                            Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
-                        )
-                    elif result == "否":
-                        colored_result = (
-                            Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
-                        )
-
-                    logger.info(f"语义比对结果：{colored_result}")
+                if result != "RETRY":
                     return result, reason
-
-                except json.JSONDecodeError:
-                    # 如果 JSON 解析失败，尝试从文本中提取结果
-                    if "是" in response_text and "否" not in response_text:
-                        result = "是"
-                        reason = response_text
-                    elif "否" in response_text and "是" not in response_text:
-                        result = "否"
-                        reason = response_text
-                    else:
-                        result = "无法判断"
-                        reason = f"无法解析响应: {response_text[:200]}..."
-
-                    colored_result = result
-                    if result == "是":
-                        colored_result = (
-                            Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
-                        )
-                    elif result == "否":
-                        colored_result = (
-                            Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
-                        )
-
-                    logger.info(f"语义比对结果（文本解析）：{colored_result}")
-                    return result, reason
-
-            except openai.AuthenticationError as e:
-                logger.error(f"OpenAI API 认证失败: {e}")
-                return "错误", f"API 认证失败: {e}"
-
-            except openai.RateLimitError as e:
-                logger.warning(f"OpenAI API 速率限制: {e}")
-                if attempt < max_retries - 1:
-                    retry_after = (
-                        self._extract_retry_delay(str(e)) or default_retry_delay
-                    )
-                    logger.info(f"等待 {retry_after} 秒后重试")
-                    time.sleep(retry_after)
-                    continue
-                else:
-                    return "错误", "API 调用次数超限"
-
-            except openai.APIError as e:
-                logger.error(f"OpenAI API 错误: {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(default_retry_delay)
-                    continue
-                else:
-                    return "错误", f"API 调用失败: {e}"
 
             except Exception as e:
                 logger.error(f"调用 OpenAI API 时发生错误: {e}")
@@ -266,6 +160,135 @@ class OpenAIProvider(AIProvider):
                     waiting_thread.join(timeout=0.5)
 
         return "错误", "API 调用多次重试失败"
+
+    def _call_openai_api(
+        self,
+        model_to_use: str,
+        prompt: str,
+        attempt: int,
+        max_retries: int,
+        default_retry_delay: int,
+    ) -> tuple[str, str]:
+        """
+        调用 OpenAI API 并处理响应
+
+        Returns:
+            tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
+        """
+        logger.info(
+            f"正在调用 OpenAI API 进行语义比对 (尝试 {attempt + 1}/{max_retries})..."
+        )
+
+        # 获取可用客户端
+        if not self._get_available_client():
+            logger.warning("无可用 OpenAI 客户端，跳过 API 调用")
+            if attempt < max_retries - 1:
+                return "RETRY", ""
+            else:
+                return "错误", "无可用 OpenAI 模型"
+
+        try:
+            response = self.client.chat.completions.create(
+                model=model_to_use,
+                messages=[
+                    {"role": "system", "content": "你是一个专业的语义分析助手。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+                max_tokens=1000,
+            )
+
+            if not response.choices or not response.choices[0].message.content:
+                logger.warning("OpenAI API 返回空响应")
+                return "错误", "API 返回空响应"
+
+            response_text = response.choices[0].message.content.strip()
+            return self._parse_response(response_text)
+
+        except openai.AuthenticationError as e:
+            logger.error(f"OpenAI API 认证失败: {e}")
+            return "错误", f"API 认证失败: {e}"
+
+        except openai.RateLimitError as e:
+            logger.warning(f"OpenAI API 速率限制: {e}")
+            if attempt < max_retries - 1:
+                retry_after = (
+                    self._extract_retry_delay(str(e)) or default_retry_delay
+                )
+                logger.info(f"等待 {retry_after} 秒后重试")
+                time.sleep(retry_after)
+                return "RETRY", ""
+            else:
+                return "错误", "API 调用次数超限"
+
+        except openai.APIError as e:
+            logger.error(f"OpenAI API 错误: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(default_retry_delay)
+                return "RETRY", ""
+            else:
+                return "错误", f"API 调用失败: {e}"
+
+    def _parse_response(self, response_text: str) -> tuple[str, str]:
+        """
+        解析 API 响应
+
+        Args:
+            response_text: API 返回的响应文本
+
+        Returns:
+            tuple[str, str]: (结果, 原因)
+        """
+        # 尝试解析 JSON 响应
+        try:
+            # 如果响应包含代码块，提取其中的 JSON
+            if response_text.startswith("```json") and response_text.endswith(
+                "```"
+            ):
+                response_text = response_text[7:-3].strip()
+            elif response_text.startswith("```") and response_text.endswith(
+                "```"
+            ):
+                response_text = response_text[3:-3].strip()
+
+            parsed_response = json.loads(response_text)
+            result = parsed_response.get("result", "无法判断").strip()
+            reason = parsed_response.get("reason", "无").strip()
+
+            self._log_result(result)
+            return result, reason
+
+        except json.JSONDecodeError:
+            # 如果 JSON 解析失败，尝试从文本中提取结果
+            if "是" in response_text and "否" not in response_text:
+                result = "是"
+                reason = response_text
+            elif "否" in response_text and "是" not in response_text:
+                result = "否"
+                reason = response_text
+            else:
+                result = "无法判断"
+                reason = f"无法解析响应: {response_text[:200]}..."
+
+            self._log_result(result, text_mode=True)
+            return result, reason
+
+    def _log_result(self, result: str, text_mode: bool = False) -> None:
+        """
+        记录语义比对结果
+
+        Args:
+            result: 语义比对结果
+            text_mode: 是否为文本解析模式
+        """
+        colored_result = result
+        if result == "是":
+            colored_result = Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
+        elif result == "否":
+            colored_result = Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
+
+        mode_text = "（文本解析）" if text_mode else ""
+        logger.info(f"语义比对结果{mode_text}：{colored_result}")
 
     def _get_prompt(
         self, question: str, ai_answer: str, source_document_content: str

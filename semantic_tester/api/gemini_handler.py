@@ -335,7 +335,6 @@ def check_semantic_similarity(
     Returns:
         tuple[str, str]: (结果, 原因)，结果为"是"/"否"/"错误"
     """
-    response_text = ""  # 初始化response_text
     max_retries = 5  # API调用重试次数
     default_retry_delay = 60  # 默认等待时间（秒）
 
@@ -347,21 +346,11 @@ def check_semantic_similarity(
         client = gemini_api_handler.get_client()
 
         if not client:
-            logger.warning(
-                f"Gemini客户端未成功初始化或无可用密钥，跳过API调用 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})。"
-            )
-            if attempt < max_retries - 1:
-                # 如果没有可用密钥，等待一段时间再重试
-                logger.info(
-                    f"等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...')。"
-                )
-                time.sleep(default_retry_delay)
-                continue
-            else:
-                logger.error(
-                    f"多次尝试后仍无可用Gemini模型，语义比对失败 (问题: '{question[:50]}...')。"
-                )
+            if not _handle_no_client(
+                question, attempt, max_retries, default_retry_delay
+            ):
                 return "错误", "无可用Gemini模型"
+            continue
 
         prompt = gemini_api_handler.get_prompt(
             question, ai_answer, source_document_content
@@ -376,169 +365,42 @@ def check_semantic_similarity(
         waiting_thread.start()
 
         try:
-            try:
-                logger.info(
-                    f"正在调用Gemini API进行语义比对 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})..."
-                )
-                # 使用新SDK生成内容（使用正确的配置类型）
-                response = client.models.generate_content(  # type: ignore
-                    model=gemini_api_handler.model_name,
-                    contents=[prompt],
-                    config=types.GenerateContentConfig(temperature=0),
-                )
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
-                logger.info(
-                    f"Gemini API调用完成，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...')。"
-                )
+            result, reason = _call_gemini_api(
+                client,
+                gemini_api_handler,
+                prompt,
+                question,
+                attempt,
+                max_retries,
+                start_time,
+                default_retry_delay,
+            )
+            if result != "RETRY":
+                return result, reason
 
-                # 确保响应有效
-                if response is None or response.text is None:
-                    logger.warning("Gemini API返回空响应")
-                    return "错误", "API返回空响应"
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(
+                f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {time.time() - start_time:.2f} 秒"
+            )
+            logger.debug(
+                f"完整错误信息: {str(e)}", exc_info=True
+            )  # 添加详细错误日志
 
-                # 尝试解析Gemini返回的JSON
-                response_text = response.text.strip()
-                # 移除可能存在的Markdown代码块标记
-                if response_text.startswith("```json") and response_text.endswith(
-                    "```"
-                ):
-                    response_text = response_text[7:-3].strip()
-
-                try:
-                    parsed_response = json.loads(response_text)
-                    result = parsed_response.get("result", "无法判断").strip()
-                    reason = parsed_response.get("reason", "无").strip()
-
-                    # 根据结果设置颜色和加粗
-                    colored_result = result
-                    if result == "是":
-                        colored_result = (
-                            Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
-                        )
-                    elif result == "否":
-                        colored_result = (
-                            Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
-                        )
-
-                    logger.info(
-                        f"语义比对结果：{colored_result} (问题: '{question[:50]}...')"
-                    )
-                    return result, reason
-                except json.JSONDecodeError as e:
-                    logger.warning(f"解析JSON失败: {response_text}, 错误: {e}")
-                    return "错误", f"JSON解析失败: {e}"
-
-            except json.JSONDecodeError as e:
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
+            # 非速率限制错误，也进行重试（可能是其他临时网络问题）
+            if attempt < max_retries - 1:
                 logger.warning(
-                    f"Gemini返回的JSON格式不正确：{response_text}，错误：{e}，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...)。"
+                    f"非速率限制错误，等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...)。"
                 )
-                # JSON解析错误通常不是临时错误，不进行重试
-                return "错误", f"JSON解析错误: {e}"
-
-            except google.api_core.exceptions.ResourceExhausted as e:
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
-                error_msg = str(e)
-                logger.warning(
-                    f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
-                )
-
-                retry_after = default_retry_delay
-                # 尝试从异常对象本身或其details属性中提取retryDelay
-                details = getattr(
-                    e, "details", []
-                )  # 尝试获取details属性，如果不存在则为空列表
-                if not details and hasattr(
-                    e, "message"
-                ):  # 如果details为空，尝试解析错误消息字符串
-                    # 尝试从错误消息字符串中解析retryDelay
-                    retry_delay_match = re.search(r"'retryDelay': '(\d+)s'", error_msg)
-                    if retry_delay_match:
-                        try:
-                            retry_after = (
-                                int(retry_delay_match.group(1)) + 5
-                            )  # 增加5秒缓冲
-                            logger.info(
-                                f"从错误消息中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...)。"
-                            )
-                        except ValueError:
-                            logger.warning(
-                                f"无法解析错误消息中的retryDelay。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
-                            )
-                            retry_after = default_retry_delay
-                    else:
-                        logger.warning(
-                            f"未在错误详情或错误消息中找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
-                        )
-                        retry_after = default_retry_delay
-                else:  # 如果details不为空，遍历details查找retryDelay
-                    found_retry_delay = False
-                    for detail in details:
-                        # 假设detail是ErrorInfo对象或类似结构
-                        if hasattr(detail, "retry_delay") and hasattr(
-                            detail.retry_delay, "seconds"
-                        ):
-                            retry_after = detail.retry_delay.seconds
-                            logger.info(
-                                f"从API错误详情中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...)。"
-                            )
-                            found_retry_delay = True
-                            break
-                    if not found_retry_delay:
-                        logger.warning(
-                            f"在错误详情中未找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
-                        )
-                        retry_after = default_retry_delay
-
-                if attempt < max_retries - 1:
-                    logger.info(
-                        f"检测到429错误，立即强制轮转到下一个密钥 (问题: '{question[:50]}...)。"
-                    )
-                    # 更新当前密钥的冷却时间
-                    current_key = gemini_api_handler.api_keys[
-                        gemini_api_handler.current_key_index
-                    ]
-                    gemini_api_handler.key_cooldown_until[current_key] = (
-                        time.time() + retry_after
-                    )
-                    gemini_api_handler.rotate_key(
-                        force_rotate=True
-                    )  # 强制轮转到下一个密钥
-                    continue  # 重试当前记录
-                else:
-                    logger.error(
-                        f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
-                    )
-                    return "错误", f"API调用多次重试失败: {error_msg}"
-
-            except Exception as e:
-                end_time = time.time()  # 记录API调用结束时间
-                duration = end_time - start_time  # 计算耗时
-                error_msg = str(e)
+                time.sleep(default_retry_delay)
+                # 强制轮转到下一个密钥并在下一次循环开始时使用
+                gemini_api_handler.rotate_key(force_rotate=True)
+                continue  # 重试当前记录
+            else:
                 logger.error(
-                    f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+                    f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
                 )
-                logger.debug(
-                    f"完整错误信息: {str(e)}", exc_info=True
-                )  # 添加详细错误日志
-
-                # 非速率限制错误，也进行重试（可能是其他临时网络问题）
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        f"非速率限制错误，等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...)。"
-                    )
-                    time.sleep(default_retry_delay)
-                    # 强制轮转到下一个密钥并在下一次循环开始时使用
-                    gemini_api_handler.rotate_key(force_rotate=True)
-                    continue  # 重试当前记录
-                else:
-                    logger.error(
-                        f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
-                    )
-                    return "错误", f"API调用多次重试失败: {error_msg}"
+                return "错误", f"API调用多次重试失败: {error_msg}"
 
         finally:
             # 确保停止等待指示器
@@ -548,3 +410,222 @@ def check_semantic_similarity(
 
     # 如果所有重试都失败
     return "错误", "API调用多次重试失败"
+
+
+def _handle_no_client(
+    question: str, attempt: int, max_retries: int, default_retry_delay: int
+) -> bool:
+    """
+    处理无可用客户端的情况
+
+    Returns:
+        bool: True 表示需要重试，False 表示应该返回错误
+    """
+    logger.warning(
+        f"Gemini客户端未成功初始化或无可用密钥，跳过API调用 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})。"
+    )
+    if attempt < max_retries - 1:
+        # 如果没有可用密钥，等待一段时间再重试
+        logger.info(
+            f"等待 {default_retry_delay} 秒后重试 (问题: '{question[:50]}...')。"
+        )
+        time.sleep(default_retry_delay)
+        return True
+    else:
+        logger.error(
+            f"多次尝试后仍无可用Gemini模型，语义比对失败 (问题: '{question[:50]}...')。"
+        )
+        return False
+
+
+def _call_gemini_api(
+    client,
+    gemini_api_handler: GeminiAPIHandler,
+    prompt: str,
+    question: str,
+    attempt: int,
+    max_retries: int,
+    start_time: float,
+    default_retry_delay: int,
+) -> tuple[str, str]:
+    """
+    调用 Gemini API 并处理响应
+
+    Returns:
+        tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
+    """
+    try:
+        logger.info(
+            f"正在调用Gemini API进行语义比对 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})..."
+        )
+        # 使用新SDK生成内容（使用正确的配置类型）
+        response = client.models.generate_content(  # type: ignore
+            model=gemini_api_handler.model_name,
+            contents=[prompt],
+            config=types.GenerateContentConfig(temperature=0),
+        )
+        end_time = time.time()  # 记录API调用结束时间
+        duration = end_time - start_time  # 计算耗时
+        logger.info(
+            f"Gemini API调用完成，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...')。"
+        )
+
+        # 确保响应有效
+        if response is None or response.text is None:
+            logger.warning("Gemini API返回空响应")
+            return "错误", "API返回空响应"
+
+        # 尝试解析Gemini返回的JSON
+        response_text = response.text.strip()
+        # 移除可能存在的Markdown代码块标记
+        if response_text.startswith("```json") and response_text.endswith(
+            "```"
+        ):
+            response_text = response_text[7:-3].strip()
+
+        try:
+            parsed_response = json.loads(response_text)
+            result = parsed_response.get("result", "无法判断").strip()
+            reason = parsed_response.get("reason", "无").strip()
+
+            # 根据结果设置颜色和加粗
+            colored_result = result
+            if result == "是":
+                colored_result = (
+                    Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
+                )
+            elif result == "否":
+                colored_result = (
+                    Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
+                )
+
+            logger.info(
+                f"语义比对结果：{colored_result} (问题: '{question[:50]}...')"
+            )
+            return result, reason
+        except json.JSONDecodeError as e:
+            logger.warning(f"解析JSON失败: {response_text}, 错误: {e}")
+            return "错误", f"JSON解析失败: {e}"
+
+    except json.JSONDecodeError as e:
+        end_time = time.time()  # 记录API调用结束时间
+        duration = end_time - start_time  # 计算耗时
+        logger.warning(
+            f"Gemini返回的JSON格式不正确，错误：{e}，耗时: {duration:.2f} 秒 (问题: '{question[:50]}...)。"
+        )
+        # JSON解析错误通常不是临时错误，不进行重试
+        return "错误", f"JSON解析错误: {e}"
+
+    except google.api_core.exceptions.ResourceExhausted as e:
+        return _handle_rate_limit_error(
+            e,
+            gemini_api_handler,
+            question,
+            attempt,
+            max_retries,
+            start_time,
+            default_retry_delay,
+        )
+
+
+def _handle_rate_limit_error(
+    e,
+    gemini_api_handler: GeminiAPIHandler,
+    question: str,
+    attempt: int,
+    max_retries: int,
+    start_time: float,
+    default_retry_delay: int,
+) -> tuple[str, str]:
+    """
+    处理速率限制错误 (429)
+
+    Returns:
+        tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
+    """
+    end_time = time.time()  # 记录API调用结束时间
+    duration = end_time - start_time  # 计算耗时
+    error_msg = str(e)
+    logger.warning(
+        f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+    )
+
+    retry_after = _extract_retry_delay_from_error(e, default_retry_delay, question)
+
+    if attempt < max_retries - 1:
+        logger.info(
+            f"检测到429错误，立即强制轮转到下一个密钥 (问题: '{question[:50]}...)。"
+        )
+        # 更新当前密钥的冷却时间
+        current_key = gemini_api_handler.api_keys[
+            gemini_api_handler.current_key_index
+        ]
+        gemini_api_handler.key_cooldown_until[current_key] = (
+            time.time() + retry_after
+        )
+        gemini_api_handler.rotate_key(
+            force_rotate=True
+        )  # 强制轮转到下一个密钥
+        return "RETRY", ""  # 重试当前记录
+    else:
+        logger.error(
+            f"语义比对多次重试后失败 (问题: '{question[:50]}...'): {error_msg}"
+        )
+        return "错误", f"API调用多次重试失败: {error_msg}"
+
+
+def _extract_retry_delay_from_error(
+    e, default_retry_delay: int, question: str
+) -> int:
+    """
+    从错误中提取重试延迟时间
+
+    Returns:
+        int: 重试延迟时间（秒）
+    """
+    retry_after = default_retry_delay
+    error_msg = str(e)
+
+    # 尝试从异常对象本身或其details属性中提取retryDelay
+    details = getattr(e, "details", [])  # 尝试获取details属性，如果不存在则为空列表
+    if not details and hasattr(e, "message"):  # 如果details为空，尝试解析错误消息字符串
+        # 尝试从错误消息字符串中解析retryDelay
+        retry_delay_match = re.search(r"'retryDelay': '(\d+)s'", error_msg)
+        if retry_delay_match:
+            try:
+                retry_after = (
+                    int(retry_delay_match.group(1)) + 5
+                )  # 增加5秒缓冲
+                logger.info(
+                    f"从错误消息中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...)。"
+                )
+            except ValueError:
+                logger.warning(
+                    f"无法解析错误消息中的retryDelay。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
+                )
+                retry_after = default_retry_delay
+        else:
+            logger.warning(
+                f"未在错误详情或错误消息中找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
+            )
+            retry_after = default_retry_delay
+    else:  # 如果details不为空，遍历details查找retryDelay
+        found_retry_delay = False
+        for detail in details:
+            # 假设detail是ErrorInfo对象或类似结构
+            if hasattr(detail, "retry_delay") and hasattr(
+                detail.retry_delay, "seconds"
+            ):
+                retry_after = detail.retry_delay.seconds
+                logger.info(
+                    f"从API错误详情中提取到建议的重试延迟: {retry_after} 秒 (问题: '{question[:50]}...)。"
+                )
+                found_retry_delay = True
+                break
+        if not found_retry_delay:
+            logger.warning(
+                f"在错误详情中未找到retryDelay信息。使用默认等待时间 {default_retry_delay} 秒 (问题: '{question[:50]}...)。"
+            )
+            retry_after = default_retry_delay
+
+    return retry_after
