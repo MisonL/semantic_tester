@@ -239,10 +239,27 @@ class IflowProvider(AIProvider):
         content = content.strip()
 
         # 尝试提取判断结果
+        result, reason = self._extract_result_from_format(content)
+        
+        # 备用解析：如果没有找到明确格式，尝试关键词匹配
+        if result == "不确定":
+            result = self._extract_result_by_keywords(content)
+
+        # 清理判断依据
+        reason = self._clean_reason(reason)
+
+        return result, reason
+
+    def _extract_result_from_format(self, content: str) -> tuple[str, str]:
+        """
+        从格式化内容中提取结果和原因
+        
+        Returns:
+            tuple[str, str]: (结果, 原因)
+        """
         result = "不确定"
         reason = content
 
-        # 查找判断结果行
         if "判断结果：" in content:
             lines = content.split("\n")
             for i, line in enumerate(lines):
@@ -251,44 +268,64 @@ class IflowProvider(AIProvider):
                     if result_part in ["是", "否", "不确定"]:
                         result = result_part
 
-                    # 判断依据可能是后续行或同一行的剩余部分
-                    if i + 1 < len(lines):
-                        reason_lines = []
-                        # 从下一行开始收集判断依据
-                        for j in range(i + 1, len(lines)):
-                            if lines[j].strip():
-                                reason_lines.append(lines[j].strip())
-
-                        if reason_lines:
-                            reason = "\n".join(reason_lines)
-                        else:
-                            # 如果没有后续行，使用当前行的剩余部分
-                            if "判断依据：" in line:
-                                reason = line.split("判断依据：")[-1].strip()
+                    # 提取判断依据
+                    reason = self._extract_reason_from_lines(lines, i, line)
                     break
+        
+        return result, reason
+    
+    def _extract_reason_from_lines(self, lines: list, current_index: int, current_line: str) -> str:
+        """
+        从行中提取判断依据
+        
+        Returns:
+            str: 判断依据
+        """
+        if current_index + 1 < len(lines):
+            reason_lines = []
+            # 从下一行开始收集判断依据
+            for j in range(current_index + 1, len(lines)):
+                if lines[j].strip():
+                    reason_lines.append(lines[j].strip())
 
-        # 备用解析：如果没有找到明确格式，尝试关键词匹配
-        if result == "不确定":
-            content_lower = content.lower()
-            if any(
-                keyword in content_lower
-                for keyword in ["是", "符合", "一致", "正确", "能够推断"]
-            ):
-                if any(
-                    negative in content_lower
-                    for negative in ["不是", "不符合", "不一致", "错误", "无法推断"]
-                ):
-                    result = "否"
-                else:
-                    result = "是"
-            elif any(
-                keyword in content_lower
-                for keyword in ["不是", "不符合", "不一致", "错误", "无法推断"]
-            ):
-                result = "否"
-
-        # 清理判断依据
+            if reason_lines:
+                return "\n".join(reason_lines)
+        
+        # 如果没有后续行，使用当前行的剩余部分
+        if "判断依据：" in current_line:
+            return current_line.split("判断依据：")[-1].strip()
+        
+        return ""
+    
+    def _extract_result_by_keywords(self, content: str) -> str:
+        """
+        通过关键词匹配提取结果
+        
+        Returns:
+            str: 提取的结果
+        """
+        content_lower = content.lower()
+        
+        positive_keywords = ["是", "符合", "一致", "正确", "能够推断"]
+        negative_keywords = ["不是", "不符合", "不一致", "错误", "无法推断"]
+        
+        has_positive = any(kw in content_lower for kw in positive_keywords)
+        has_negative = any(kw in content_lower for kw in negative_keywords)
+        
+        if has_positive and not has_negative:
+            return "是"
+        elif has_negative:
+            return "否"
+        
+        return "不确定"
+    
+    def _clean_reason(self, reason: str) -> str:
+        """
+        清理判断依据
+        
+        Returns:
+            str: 清理后的判断依据
+        """
         if len(reason) > 500:
             reason = reason[:500] + "..."
-
-        return result, reason
+        return reason

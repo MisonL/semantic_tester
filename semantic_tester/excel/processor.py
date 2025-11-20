@@ -163,110 +163,163 @@ class ExcelProcessor:
         Returns:
             Dict[str, int]: 列索引映射
         """
-        column_mapping = {}
-
         if auto_config and self.is_dify_format:
-            # 使用自动配置
-            doc_name_col_index = 0  # 文档名称列
-            question_col_index = self.column_names.index(
-                self.format_info["question_col"]
-            )
-
-            # 处理响应列选择
-            response_cols = self.format_info["response_cols"]
-            if len(response_cols) > 1:
-                print(
-                    f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}"
-                )
-                for i, col in enumerate(response_cols):
-                    print(f"  {i + 1}. {col}")
-
-                while True:
-                    choice = input(
-                        f"请输入选择 (1-{len(response_cols)}, 默认: 1): "
-                    ).strip()
-                    if not choice:
-                        choice = "1"
-
-                    try:
-                        choice_idx = int(choice) - 1
-                        if 0 <= choice_idx < len(response_cols):
-                            response_col = response_cols[choice_idx]
-                            break
-                        else:
-                            print(
-                                f"选择无效，请输入 1-{len(response_cols)} 之间的数字。"
-                            )
-                    except ValueError:
-                        print("请输入有效的数字。")
-            elif len(response_cols) == 1:
-                response_col = response_cols[0]
-            else:
-                print(f"{Fore.RED}❌ 未找到任何响应列！{Style.RESET_ALL}")
-                auto_config = False
-                return self.get_user_column_mapping(auto_config=False)
-
-            ai_answer_col_index = self.column_names.index(response_col)
-
-            column_mapping = {
-                "doc_name_col_index": doc_name_col_index,
-                "question_col_index": question_col_index,
-                "ai_answer_col_index": ai_answer_col_index,
-            }
-
-            print("\n已配置列映射：")
-            print(f"  • 文档名称: 列 {doc_name_col_index + 1} ('文档名称')")
-            print(
-                f"  • 问题点: 列 {question_col_index + 1} ('{self.format_info['question_col']}')"
-            )
-            print(f"  • AI客服回答: 列 {ai_answer_col_index + 1} ('{response_col}')")
-
-            # 询问是否使用自动配置
-            use_auto_config = input(
-                f"\n{Fore.CYAN}是否使用此自动配置？(Y/n，默认: Y): {Style.RESET_ALL}"
-            ).lower()
-            if use_auto_config != "n":
+            column_mapping = self._auto_configure_columns()
+            if column_mapping:
                 return column_mapping
+            # 如果自动配置失败，切换到手动配置
+            logger.warning("自动配置失败，切换到手动配置")
 
         # 手动配置列映射
-        # --- 获取"文档名称"列 ---
-        doc_name_col_input = input(
-            '请输入"文档名称"所在列的名称或序号 (例如: "文档名称" 或 "1"): '
+        return self._manual_configure_columns()
+    
+    def _auto_configure_columns(self) -> Dict[str, int]:
+        """
+        自动配置列映射（针对 dify 格式）
+        
+        Returns:
+            Dict[str, int] or None: 列索引映射，如果失败返回None
+        """
+        doc_name_col_index = 0  # 文档名称列
+        question_col_index = self.column_names.index(
+            self.format_info["question_col"]
         )
-        doc_name_col_index = get_column_index(self.column_names, doc_name_col_input)
-        if doc_name_col_index == -1:
-            logger.error(
-                f"错误: 未找到列名为 '{doc_name_col_input}' 的'文档名称'列。程序退出。"
-            )
-            sys.exit(1)
 
-        # --- 获取"问题点"列 ---
-        question_col_input = input(
-            '请输入"问题点"所在列的名称或序号 (例如: "问题点" 或 "2"): '
+        # 处理响应列选择
+        response_col = self._select_response_column()
+        if not response_col:
+            return None
+
+        ai_answer_col_index = self.column_names.index(response_col)
+
+        column_mapping = {
+            "doc_name_col_index": doc_name_col_index,
+            "question_col_index": question_col_index,
+            "ai_answer_col_index": ai_answer_col_index,
+        }
+
+        self._display_column_mapping(column_mapping)
+        
+        # 询问是否使用自动配置
+        if self._confirm_auto_config():
+            return column_mapping
+        
+        return None
+    
+    def _select_response_column(self) -> str:
+        """
+        选择响应列
+        
+        Returns:
+            str: 选择的列名或None
+        """
+        response_cols = self.format_info["response_cols"]
+        
+        if not response_cols:
+            print(f"{Fore.RED}❌ 未找到任何响应列！{Style.RESET_ALL}")
+            return None
+        
+        if len(response_cols) == 1:
+            return response_cols[0]
+        
+        print(
+            f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}"
         )
-        question_col_index = get_column_index(self.column_names, question_col_input)
-        if question_col_index == -1:
-            logger.error(
-                f"错误: 未找到列名为 '{question_col_input}' 的'问题点'列。程序退出。"
-            )
-            sys.exit(1)
+        for i, col in enumerate(response_cols):
+            print(f"  {i + 1}. {col}")
 
-        # --- 获取"AI客服回答"列 ---
-        ai_answer_col_input = input(
-            '请输入"AI客服回答"所在列的名称或序号 (例如: "AI客服回答" 或 "3"): '
+        while True:
+            choice = input(
+                f"请输入选择 (1-{len(response_cols)}, 默认: 1): "
+            ).strip()
+            if not choice:
+                choice = "1"
+
+            try:
+                choice_idx = int(choice) - 1
+                if 0 <= choice_idx < len(response_cols):
+                    return response_cols[choice_idx]
+                else:
+                    print(
+                        f"选择无效，请输入 1-{len(response_cols)} 之间的数字。"
+                    )
+            except ValueError:
+                print("请输入有效的数字。")
+    
+    def _display_column_mapping(self, column_mapping: Dict[str, int]):
+        """
+        显示列映射配置
+        """
+        print("\n已配置列映射：")
+        print(f"  • 文档名称: 列 {column_mapping['doc_name_col_index'] + 1} ('文档名称')")
+        print(
+            f"  • 问题点: 列 {column_mapping['question_col_index'] + 1} ('{self.format_info['question_col']}')"
         )
-        ai_answer_col_index = get_column_index(self.column_names, ai_answer_col_input)
-        if ai_answer_col_index == -1:
-            logger.error(
-                f"错误: 未找到列名为 '{ai_answer_col_input}' 的'AI客服回答'列。程序退出。"
-            )
-            sys.exit(1)
-
+        print(
+            f"  • AI客服回答: 列 {column_mapping['ai_answer_col_index'] + 1} ('{self.format_info['response_cols'][0] if self.format_info['response_cols'] else '未知'}')"
+        )
+    
+    def _confirm_auto_config(self) -> bool:
+        """
+        确认是否使用自动配置
+        
+        Returns:
+            bool: True 表示确认使用
+        """
+        use_auto_config = input(
+            f"\n{Fore.CYAN}是否使用此自动配置？(Y/n，默认: Y): {Style.RESET_ALL}"
+        ).lower()
+        return use_auto_config != "n"
+    
+    def _manual_configure_columns(self) -> Dict[str, int]:
+        """
+        手动配置列映射
+        
+        Returns:
+            Dict[str, int]: 列索引映射
+        """
+        # 获取"文档名称"列
+        doc_name_col_index = self._get_column_index_by_input(
+            "文档名称", "请输入\"文档名称\"所在列的名称或序号"
+        )
+        
+        # 获取"问题点"列
+        question_col_index = self._get_column_index_by_input(
+            "问题点", "请输入\"问题点\"所在列的名称或序号"
+        )
+        
+        # 获取"AI客服回答"列
+        ai_answer_col_index = self._get_column_index_by_input(
+            "AI客服回答", "请输入\"AI客服回答\"所在列的名称或序号"
+        )
+        
         return {
             "doc_name_col_index": doc_name_col_index,
             "question_col_index": question_col_index,
             "ai_answer_col_index": ai_answer_col_index,
         }
+    
+    def _get_column_index_by_input(self, column_type: str, prompt: str) -> int:
+        """
+        根据用户输入获取列索引
+        
+        Args:
+            column_type: 列类型（用于错误消息）
+            prompt: 提示信息
+        
+        Returns:
+            int: 列索引
+        """
+        col_input = input(f"{prompt} (例如: \"{column_type}\" 或 \"1\"): ")
+        col_index = get_column_index(self.column_names, col_input)
+        
+        if col_index == -1:
+            logger.error(
+                f"错误: 未找到列名为 '{col_input}' 的'{column_type}'列。程序退出。"
+            )
+            sys.exit(1)
+        
+        return col_index
 
     def get_result_columns(self) -> Dict[str, Tuple[str, int]]:
         """

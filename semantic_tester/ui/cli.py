@@ -45,13 +45,28 @@ class CLIInterface:
         # 获取已配置的供应商
         configured_providers = provider_manager.get_configured_providers()
 
-        print("\n=== AI 供应商选择 ===")
+        MenuHandler._show_provider_list(providers, configured_providers)
+        
+        # 如果没有已配置的供应商，询问是否继续
+        if not configured_providers:
+            if not MenuHandler._confirm_unconfigured_selection():
+                return None
+
+        # 获取用户选择
+        return MenuHandler._get_user_choice(provider_manager, providers)
+    
+    @staticmethod
+    def _show_provider_list(providers: list, configured_providers: list):
+        """
+        显示供应商列表
+        """
+        print("
+=== AI 供应商选择 ===")
         print(
             f"可用供应商: {len(providers)} 个，已配置: {len(configured_providers)} 个"
         )
 
         # 显示供应商列表
-        choices = []
         for i, provider_info in enumerate(providers, 1):
             provider_id = provider_info["id"]
             provider_name = provider_info["name"]
@@ -62,31 +77,40 @@ class CLIInterface:
             current_marker = " (当前)" if is_current else ""
 
             print(f"{i}. {provider_name}{current_marker} - {status}")
-            choices.append(provider_id)
-
-        # 如果没有已配置的供应商，询问是否继续
-        if not configured_providers:
-            print("\n⚠️  警告: 没有已配置的 AI 供应商")
-            proceed = input("是否继续选择未配置的供应商? (y/N): ").strip().lower()
-            if proceed not in ["y", "yes"]:
-                return None
-
-        # 获取用户选择
+    
+    @staticmethod
+    def _confirm_unconfigured_selection() -> bool:
+        """
+        确认是否选择未配置的供应商
+        
+        Returns:
+            bool: True 表示继续，False 表示取消
+        """
+        print("
+⚠️  警告: 没有已配置的 AI 供应商")
+        proceed = input("是否继续选择未配置的供应商? (y/N): ").strip().lower()
+        return proceed in ["y", "yes"]
+    
+    @staticmethod
+    def _get_user_choice(provider_manager, providers: list):
+        """
+        获取用户选择
+        
+        Returns:
+            str: 选择的供应商 ID
+        """
+        choices = [p["id"] for p in providers]
+        
         while True:
             try:
                 choice_input = input(
-                    f"\n请选择供应商 (1-{len(providers)}) 或按回车使用当前供应商: "
+                    f"
+请选择供应商 (1-{len(providers)}) 或按回车使用当前供应商: "
                 ).strip()
 
                 # 如果用户按回车，使用当前供应商
                 if not choice_input:
-                    current_provider = provider_manager.get_current_provider()
-                    if current_provider:
-                        print(f"使用当前供应商: {current_provider.name}")
-                        return provider_manager.current_provider_id
-                    else:
-                        print("❌ 没有当前供应商")
-                        continue
+                    return MenuHandler._use_current_provider(provider_manager)
 
                 choice_index = int(choice_input)
                 if 1 <= choice_index <= len(providers):
@@ -96,11 +120,7 @@ class CLIInterface:
                     )
 
                     if not selected_provider.is_configured():
-                        print(
-                            f"⚠️  供应商 {selected_provider.name} 未配置，可能无法正常使用"
-                        )
-                        confirm = input("确认选择此供应商? (y/N): ").strip().lower()
-                        if confirm not in ["y", "yes"]:
+                        if not MenuHandler._confirm_unconfigured_provider(selected_provider):
                             continue
 
                     # 设置为当前供应商
@@ -112,8 +132,39 @@ class CLIInterface:
             except ValueError:
                 print("❌ 请输入有效的数字")
             except KeyboardInterrupt:
-                print("\n操作已取消")
+                print("
+操作已取消")
                 return None
+    
+    @staticmethod
+    def _use_current_provider(provider_manager):
+        """
+        使用当前供应商
+        
+        Returns:
+            str: 当前供应商 ID 或 None
+        """
+        current_provider = provider_manager.get_current_provider()
+        if current_provider:
+            print(f"使用当前供应商: {current_provider.name}")
+            return provider_manager.current_provider_id
+        else:
+            print("❌ 没有当前供应商")
+            return None
+    
+    @staticmethod
+    def _confirm_unconfigured_provider(provider) -> bool:
+        """
+        确认选择未配置的供应商
+        
+        Returns:
+            bool: True 表示确认，False 表示取消
+        """
+        print(
+            f"⚠️  供应商 {provider.name} 未配置，可能无法正常使用"
+        )
+        confirm = input("确认选择此供应商? (y/N): ").strip().lower()
+        return confirm in ["y", "yes"]
 
     @staticmethod
     def show_provider_status(provider_manager):
