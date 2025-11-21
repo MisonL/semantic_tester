@@ -99,19 +99,8 @@ class SemanticTestApp:
 
     def _initialize_provider_manager(self):
         """初始化供应商管理器"""
-        # 构建供应商配置
-        provider_config = {
-            "ai_providers": self.env_manager.get_ai_providers(),
-            "gemini_api_keys": self.env_manager.gemini_api_keys,
-            "gemini_model": self.env_manager.get_gemini_model(),
-            "openai": self.env_manager.get_openai_config(),
-            "anthropic": self.env_manager.get_anthropic_config(),
-            "dify": self.env_manager.get_dify_config(),
-            "iflow": self.env_manager.get_iflow_config(),
-            "batch": self.env_manager.get_batch_config(),
-        }
-
-        self.provider_manager = ProviderManager(provider_config)
+        # 直接传递EnvManager实例
+        self.provider_manager = ProviderManager(self.env_manager)
 
         # 不再显示详细供应商状态，使用简洁摘要替代
         if not self.provider_manager:
