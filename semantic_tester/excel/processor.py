@@ -123,6 +123,12 @@ class ExcelProcessor:
             format_info["question_col"] = question_col
             format_info["response_cols"] = response_cols or []
 
+            # 添加列索引信息
+            if question_col:
+                format_info["question_col_index"] = self.column_names.index(question_col)
+            if response_cols:
+                format_info["response_cols_index"] = [self.column_names.index(col) for col in response_cols]
+
         self.format_info = format_info
         return format_info
 
@@ -137,13 +143,14 @@ class ExcelProcessor:
                 f"\n{Fore.GREEN}✅ 检测到 Dify Chat Tester 输出格式！{Style.RESET_ALL}"
             )
             print("将自动适配列映射关系：")
-            print(f"  • {self.format_info['question_col']} → 问题点")
+            print(f"  • 序号 {self.format_info['question_col_index'] + 1} ({self.format_info['question_col']}) → 问题点")
             response_col = (
                 self.format_info['response_cols'][0]
                 if self.format_info['response_cols'] else '未知'
             )
-            print(f"  • {response_col} → AI客服回答")
-            print("  • 文档名称 → 需要手动指定")
+            response_col_index = self.format_info['response_cols_index'][0] if self.format_info['response_cols_index'] else 0
+            print(f"  • 序号 {response_col_index + 1} ({response_col}) → AI客服回答")
+            print("  • 序号 0 (文档名称) → 需要手动指定 - 自动添加列")
 
     def auto_add_document_column(self):
         """自动添加文档名称列（针对 dify 格式）"""
@@ -253,19 +260,22 @@ class ExcelProcessor:
         显示列映射配置
         """
         print("\n已配置列映射：")
-        print(f"  • 文档名称: 列 {column_mapping['doc_name_col_index'] + 1} ('文档名称')")
-        print(
-            f"  • 问题点: 列 {column_mapping['question_col_index'] + 1} "
-            f"('{self.format_info['question_col']}')"
-        )
+
+        # 文档名称列 - 自动添加的列固定为序号0
+        doc_col_num = 0  # 自动添加的文档名称列始终是序号0
+        print(f"  • 文档名称: 序号 {doc_col_num} ('文档名称' - 自动添加)")
+        
+        # 问题点列 - 使用原Excel列序号
+        question_col_num = column_mapping['question_col_index'] + 1
+        print(f"  • 问题点: 序号 {question_col_num} ('{self.format_info['question_col']}')")
+
+        # AI客服回答列 - 使用原Excel列序号
         response_col_name = (
             self.format_info['response_cols'][0]
             if self.format_info['response_cols'] else '未知'
         )
-        print(
-            f"  • AI客服回答: 列 {column_mapping['ai_answer_col_index'] + 1} "
-            f"('{response_col_name}')"
-        )
+        ai_answer_col_num = column_mapping['ai_answer_col_index'] + 1
+        print(f"  • AI客服回答: 序号 {ai_answer_col_num} ('{response_col_name}')")
 
     def _confirm_auto_config(self) -> bool:
         """
