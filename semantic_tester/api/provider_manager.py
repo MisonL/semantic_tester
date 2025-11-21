@@ -5,10 +5,13 @@ AI 供应商管理器
 """
 
 import logging
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING
 
 from .base_provider import AIProvider
 from .gemini_provider import GeminiProvider
+
+if TYPE_CHECKING:
+    from ..config.environment import EnvManager
 from .openai_provider import OpenAIProvider
 from .anthropic_provider import AnthropicProvider
 from .dify_provider import DifyProvider
@@ -20,12 +23,12 @@ logger = logging.getLogger(__name__)
 class ProviderManager:
     """AI 供应商管理器"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: "EnvManager"):
         """
         初始化供应商管理器
 
         Args:
-            config: 全局配置字典
+            config: 环境管理器实例
         """
         self.config = config
         self.providers: Dict[str, AIProvider] = {}
