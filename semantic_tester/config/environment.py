@@ -66,12 +66,8 @@ class EnvManager:
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
 
-        if len(valid_keys) < len(all_keys):
-            template_count = len(all_keys) - len(valid_keys)
-            logger.warning(f"已过滤 {template_count} 个模板API密钥")
-
         if not valid_keys:
-            logger.warning("所有 Gemini API 密钥都是模板值，请配置真实的API密钥")
+            # 具体统计在 _log_template_summary 中统一处理
             return []
 
         logger.info(f"成功加载 {len(valid_keys)} 个有效的 Gemini API 密钥")
@@ -177,10 +173,7 @@ class EnvManager:
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
 
-        # 记录模板值过滤情况
-        if len(valid_keys) < len(all_keys):
-            template_count = len(all_keys) - len(valid_keys)
-            logger.warning(f"OpenAI: 已过滤 {template_count} 个模板API密钥")
+        # 模板值过滤情况在 _log_template_summary 中统一处理
 
         model = os.getenv("OPENAI_MODEL") or self.env_loader.get_str(
             "OPENAI_MODEL", "gpt-4o"
@@ -215,10 +208,7 @@ class EnvManager:
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
 
-        # 记录模板值过滤情况
-        if len(valid_keys) < len(all_keys):
-            template_count = len(all_keys) - len(valid_keys)
-            logger.warning(f"Dify: 已过滤 {template_count} 个模板API密钥")
+        # 模板值过滤情况在 _log_template_summary 中统一处理
 
         base_url = os.getenv("DIFY_BASE_URL") or self.env_loader.get_str(
             "DIFY_BASE_URL", "https://api.dify.ai/v1"
@@ -251,10 +241,7 @@ class EnvManager:
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
 
-        # 记录模板值过滤情况
-        if len(valid_keys) < len(all_keys):
-            template_count = len(all_keys) - len(valid_keys)
-            logger.warning(f"Anthropic: 已过滤 {template_count} 个模板API密钥")
+        # 模板值过滤情况在 _log_template_summary 中统一处理
 
         model = os.getenv("ANTHROPIC_MODEL") or self.env_loader.get_str(
             "ANTHROPIC_MODEL", "claude-sonnet-4-20250514"
@@ -289,10 +276,7 @@ class EnvManager:
         # 过滤模板值
         valid_keys = [key for key in all_keys if not self._is_template_value(key)]
 
-        # 记录模板值过滤情况
-        if len(valid_keys) < len(all_keys):
-            template_count = len(all_keys) - len(valid_keys)
-            logger.warning(f"iFlow: 已过滤 {template_count} 个模板API密钥")
+        # 模板值过滤情况在 _log_template_summary 中统一处理
 
         model = os.getenv("IFLOW_MODEL") or self.env_loader.get_str(
             "IFLOW_MODEL", "qwen3-max"
@@ -386,106 +370,63 @@ class EnvManager:
 
         return ", ".join(preview_list)
 
+    def _analyze_provider_keys(self, env_var: str, provider_name: str) -> tuple:
+        """分析供应商密钥配置"""
+        key_value = os.getenv(env_var) or self.env_loader.get_str(env_var, "")
+        if not key_value:
+            return 0, False
+            
+        keys = [key.strip() for key in re.split(r"[\s,]+", key_value) if key.strip()]
+        template_count = sum(1 for key in keys if self._is_template_value(key))
+        is_configured = any(not self._is_template_value(key) for key in keys)
+        
+        return template_count, is_configured
+
     def _log_template_summary(self):
         """记录所有供应商的模板值统计摘要"""
         template_counts = {}
+        configured_suppliers = []
 
-        # 统计Gemini模板值
-        gemini_api_keys_str = os.getenv(
-            "GEMINI_API_KEY"
-        ) or self.env_loader.get_str("GEMINI_API_KEY", "")
-        if gemini_api_keys_str:
-            all_gemini_keys = [
-                key.strip()
-                for key in re.split(r"[\s,]+", gemini_api_keys_str)
-                if key.strip()
-            ]
-            valid_gemini_keys = [
-                key for key in all_gemini_keys if not self._is_template_value(key)
-            ]
-            gemini_template_count = len(all_gemini_keys) - len(valid_gemini_keys)
-            if gemini_template_count > 0:
-                template_counts["gemini"] = gemini_template_count
+        # 供应商配置映射
+        providers = [
+            ("GEMINI_API_KEY", "gemini", "Gemini"),
+            ("OPENAI_API_KEY", "openai", "OpenAI"),
+            ("ANTHROPIC_API_KEY", "anthropic", "Anthropic"),
+            ("DIFY_API_KEY", "dify", "Dify"),
+            ("IFLOW_API_KEY", "iflow", "iFlow"),
+        ]
 
-        # 统计其他供应商模板值
-        # OpenAI
-        openai_key = os.getenv("OPENAI_API_KEY") or self.env_loader.get_str(
-            "OPENAI_API_KEY", ""
-        )
-        if openai_key:
-            openai_keys = [
-                key.strip() for key in re.split(r"[\s,]+", openai_key) if key.strip()
-            ]
-            openai_template_count = sum(
-                1 for key in openai_keys if self._is_template_value(key)
-            )
-            if openai_template_count > 0:
-                template_counts["openai"] = openai_template_count
-
-        # Anthropic
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY") or self.env_loader.get_str(
-            "ANTHROPIC_API_KEY", ""
-        )
-        if anthropic_key:
-            anthropic_keys = [
-                key.strip() for key in re.split(r"[\s,]+", anthropic_key) if key.strip()
-            ]
-            anthropic_template_count = sum(
-                1 for key in anthropic_keys if self._is_template_value(key)
-            )
-            if anthropic_template_count > 0:
-                template_counts["anthropic"] = anthropic_template_count
-
-        # Dify
-        dify_key = os.getenv("DIFY_API_KEY") or self.env_loader.get_str(
-            "DIFY_API_KEY", ""
-        )
-        if dify_key:
-            dify_keys = [
-                key.strip() for key in re.split(r"[\s,]+", dify_key) if key.strip()
-            ]
-            dify_template_count = sum(
-                1 for key in dify_keys if self._is_template_value(key)
-            )
-            if dify_template_count > 0:
-                template_counts["dify"] = dify_template_count
-
-        # iFlow
-        iflow_key = os.getenv("IFLOW_API_KEY") or self.env_loader.get_str(
-            "IFLOW_API_KEY", ""
-        )
-        if iflow_key:
-            iflow_keys = [
-                key.strip() for key in re.split(r"[\s,]+", iflow_key) if key.strip()
-            ]
-            iflow_template_count = sum(
-                1 for key in iflow_keys if self._is_template_value(key)
-            )
-            if iflow_template_count > 0:
-                template_counts["iflow"] = iflow_template_count
+        # 统计各供应商配置
+        for env_var, key, name in providers:
+            template_count, is_configured = self._analyze_provider_keys(env_var, key)
+            if template_count > 0:
+                template_counts[key] = template_count
+            elif is_configured:
+                configured_suppliers.append(name)
 
         # 计算总数
         total_template_keys = sum(template_counts.values())
         total_suppliers = len(template_counts) if template_counts else 0
 
         # 记录摘要
+        if configured_suppliers:
+            logger.info(f"✅ 已配置供应商: {', '.join(configured_suppliers)}")
+        
         if total_template_keys > 0:
             logger.warning(
-                f"检测到 {total_template_keys} 个模板API密钥（共 {total_suppliers} 个供应商）"
+                f"⚠️  待配置: {total_template_keys} 个模板密钥（{total_suppliers} 个供应商）"
             )
-
-            # 详细列出每个供应商的情况
-            for supplier, count in template_counts.items():
-                if count > 0:
-                    supplier_name = {
-                        "gemini": "Gemini",
-                        "openai": "OpenAI",
-                        "anthropic": "Anthropic",
-                        "dify": "Dify",
-                        "iflow": "iFlow",
-                    }.get(supplier, supplier)
-                    logger.warning(f"  - {supplier_name}: {count} 个模板值")
-
-            logger.info("提示: 配置真实的API密钥可提高程序可用性")
-        else:
-            logger.info("所有API密钥配置正常（未发现模板值）")
+            # 只在详细模式下显示详细信息
+            if logger.level <= logging.INFO:
+                for supplier, count in template_counts.items():
+                    if count > 0:
+                        supplier_name = {
+                            "gemini": "Gemini",
+                            "openai": "OpenAI", 
+                            "anthropic": "Anthropic",
+                            "dify": "Dify",
+                            "iflow": "iFlow",
+                        }.get(supplier, supplier)
+                        logger.warning(f"    - {supplier_name}: {count} 个模板值")
+        elif not configured_suppliers:
+            logger.warning("⚠️  尚未配置任何AI供应商，请配置 .env 文件中的API密钥")

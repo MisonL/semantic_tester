@@ -188,18 +188,18 @@ class SemanticTestApp:
         print(f"\n{Fore.CYAN}=== 确认任务配置 ==={Style.RESET_ALL}")
         knowledge_base_dir = CLIInterface.get_knowledge_base_dir()
         print(f"✅ 知识库目录: {knowledge_base_dir}")
-        
+
         # 确认输出目录
         default_output_path = self.config.get_default_output_path(excel_path)
         output_path = CLIInterface.get_output_path(default_output_path)
         print(f"✅ 输出目录: {output_path}")
-        
+
         # 获取其他配置
         show_comparison_result = CLIInterface.ask_show_comparison_result()
-        
+
         # 确保输出目录存在
         self.config.ensure_output_dir(output_path)
-        
+
         # 最终确认
         from semantic_tester.ui.menu import MenuHandler
         if MenuHandler.confirm_action("确认开始处理吗？"):
@@ -571,8 +571,6 @@ class SemanticTestApp:
             elif choice == "5":
                 break
 
-    
-
     def _show_provider_management_menu(self, menu_handler):
         """显示AI供应商管理菜单"""
         while True:
@@ -806,14 +804,15 @@ class SemanticTestApp:
             print(
                 f"当前使用: {'是' if provider_info.get('is_current', False) else '否'}"
             )
-            print(f"默认模型: {provider_info['default_model']}")
-            print(f"可用模型数: {len(provider_info['models'])}")
+            print(f"默认模型: {provider_info.get('default_model', 'N/A')}")
+            print(f"可用模型数: {len(provider_info.get('models', []))}")
 
             # 显示模型列表
-            if provider_info["models"]:
-                print(f"模型列表: {', '.join(provider_info['models'][:5])}")
-                if len(provider_info["models"]) > 5:
-                    print(f"          ... 共 {len(provider_info['models'])} 个模型")
+            models = provider_info.get('models', [])
+            if models:
+                print(f"模型列表: {', '.join(models[:5])}")
+                if len(models) > 5:
+                    print(f"          ... 共 {len(models)} 个模型")
 
         print("\n" + "=" * 60)
         input("\n按回车键继续...")

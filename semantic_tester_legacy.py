@@ -517,7 +517,9 @@ def check_semantic_similarity(
         except Exception as e:
             error_msg = str(e)
             logger.error(
-                f"调用Gemini API时发生错误 (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {time.time() - start_time:.2f} 秒"
+                f"调用Gemini API时发生错误 (问题: '{question[:50]}...', "
+                f"尝试 {attempt + 1}/{max_retries})：{error_msg}，"
+                f"耗时: {time.time() - start_time:.2f} 秒"
             )  # 增加问题点信息
             logger.debug(
                 f"完整错误信息: {str(e)}", exc_info=True
@@ -681,7 +683,9 @@ def _handle_rate_limit_error_legacy(
     duration = end_time - start_time  # 计算耗时
     error_msg = str(e)
     logger.warning(
-        f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', 尝试 {attempt + 1}/{max_retries})：{error_msg}，耗时: {duration:.2f} 秒"
+        f"调用Gemini API时发生速率限制错误 (429) (问题: '{question[:50]}...', "
+        f"尝试 {attempt + 1}/{max_retries})：{error_msg}，"
+        f"耗时: {duration:.2f} 秒"
     )  # 增加问题点信息
 
     retry_after = _extract_retry_delay_from_error_legacy(e, default_retry_delay, question)

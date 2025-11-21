@@ -40,8 +40,6 @@ class MenuHandler:
             except (EOFError, KeyboardInterrupt):
                 return "4"  # 返回退出选项
 
-    
-
     @staticmethod
     def show_provider_management_menu() -> str:
         """
@@ -204,35 +202,59 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
         if allow_custom:
             print(f"{len(options) + 1}. 自定义输入")
 
+        max_choice = len(options) + (1 if allow_custom else 0)
+        
+        return MenuHandler._get_user_choice(options, allow_custom, max_choice)
+
+    @staticmethod
+    def _get_user_choice(options: List[str], allow_custom: bool, max_choice: int) -> str:
+        """获取用户选择"""
         while True:
             try:
-                user_input = input(
-                    f"\n{Fore.YELLOW}请选择 (1-{len(options) + (1 if allow_custom else 0)}): {Style.RESET_ALL}"
-                ).strip()
+                user_input = MenuHandler._get_user_input(max_choice)
                 
-                # 处理键盘中断
-                if user_input.lower() in ['q', 'quit', 'exit']:
-                    raise KeyboardInterrupt()
+                if user_input is None:  # 键盘中断
+                    return options[0]  # 返回默认选项
                 
                 choice_idx = int(user_input) - 1
 
                 if 0 <= choice_idx < len(options):
                     return options[choice_idx]
                 elif allow_custom and choice_idx == len(options):
-                    custom_input = input(
-                        f"{Fore.YELLOW}请输入自定义值: {Style.RESET_ALL}"
-                    ).strip()
-                    if custom_input:
-                        return custom_input
-                    else:
-                        print(f"{Fore.RED}❌ 自定义输入不能为空{Style.RESET_ALL}")
+                    return MenuHandler._get_custom_input()
                 else:
                     print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
             except ValueError:
                 print(f"{Fore.RED}❌ 请输入有效数字{Style.RESET_ALL}")
-            except (EOFError, KeyboardInterrupt):
-                print(f"\n{Fore.YELLOW}操作已取消{Style.RESET_ALL}")
-                raise
+
+    @staticmethod
+    def _get_user_input(max_choice: int) -> str:
+        """获取用户输入"""
+        try:
+            user_input = input(
+                f"\n{Fore.YELLOW}请选择 (1-{max_choice}): {Style.RESET_ALL}"
+            ).strip()
+
+            # 处理键盘中断
+            if user_input.lower() in ['q', 'quit', 'exit']:
+                return None
+            
+            return user_input
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+    @staticmethod
+    def _get_custom_input() -> str:
+        """获取自定义输入"""
+        custom_input = input(
+            f"{Fore.YELLOW}请输入自定义值: {Style.RESET_ALL}"
+        ).strip()
+        
+        if custom_input:
+            return custom_input
+        else:
+            print(f"{Fore.RED}❌ 自定义输入不能为空{Style.RESET_ALL}")
+            return MenuHandler._get_custom_input()  # 递归调用直到有输入
 
     @staticmethod
     def confirm_action(message: str) -> bool:
@@ -280,11 +302,11 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
         while True:
             try:
                 user_input = input(f"{Fore.YELLOW}{prompt}: {Style.RESET_ALL}").strip()
-                
+
                 # 处理退出命令
                 if user_input.lower() in ['q', 'quit', 'exit']:
                     raise KeyboardInterrupt()
-                
+
                 if not user_input:
                     continue
 

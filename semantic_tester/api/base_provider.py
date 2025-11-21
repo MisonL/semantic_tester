@@ -133,7 +133,10 @@ class AIProvider(ABC):
 
     def __repr__(self) -> str:
         """详细字符串表示"""
-        return f"AIProvider(name='{self.name}', id='{self.id}', configured={self.is_configured()})"
+        return (
+            f"AIProvider(name='{self.name}', id='{self.id}', "
+            f"configured={self.is_configured()})"
+        )
 
 
 class ProviderError(Exception):

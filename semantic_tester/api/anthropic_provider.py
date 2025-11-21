@@ -54,12 +54,19 @@ class AnthropicProvider(AIProvider):
         self._configure_client()
 
     def get_models(self) -> List[str]:
-        """
-        获取可用的模型列表
+        """获取可用的模型列表"""
+        # 优先从环境变量获取模型列表
+        import os
+        from semantic_tester.config.env_loader import get_env_loader
 
-        Returns:
-            List[str]: 模型名称列表
-        """
+        models_str = (
+            os.getenv("ANTHROPIC_MODELS")
+            or get_env_loader().get_str("ANTHROPIC_MODELS", "")
+        )
+        if models_str:
+            return [model.strip() for model in models_str.split(",") if model.strip()]
+
+        # 默认模型列表
         return [
             "claude-sonnet-4-20250514",
             "claude-3-5-sonnet-20241022",
@@ -139,7 +146,9 @@ class AnthropicProvider(AIProvider):
             "id": self.id,
             "type": "anthropic",
             "configured": self.is_configured(),
-            "model": self.default_model,
+            "default_model": self.default_model,
+            "model": self.default_model,  # 保持向后兼容
+            "models": self.get_models(),
             "base_url": self.base_url,
             "features": ["语义分析", "文本生成"],
         }
