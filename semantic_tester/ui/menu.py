@@ -203,7 +203,7 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
             print(f"{len(options) + 1}. 自定义输入")
 
         max_choice = len(options) + (1 if allow_custom else 0)
-        
+
         return MenuHandler._get_user_choice(options, allow_custom, max_choice)
 
     @staticmethod
@@ -212,10 +212,10 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
         while True:
             try:
                 user_input = MenuHandler._get_user_input(max_choice)
-                
+
                 if user_input is None:  # 键盘中断
                     return options[0]  # 返回默认选项
-                
+
                 choice_idx = int(user_input) - 1
 
                 if 0 <= choice_idx < len(options):
@@ -238,7 +238,7 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
             # 处理键盘中断
             if user_input.lower() in ['q', 'quit', 'exit']:
                 return None
-            
+
             return user_input
         except (EOFError, KeyboardInterrupt):
             return None
@@ -249,7 +249,7 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
         custom_input = input(
             f"{Fore.YELLOW}请输入自定义值: {Style.RESET_ALL}"
         ).strip()
-        
+
         if custom_input:
             return custom_input
         else:

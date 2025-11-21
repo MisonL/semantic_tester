@@ -375,11 +375,11 @@ class EnvManager:
         key_value = os.getenv(env_var) or self.env_loader.get_str(env_var, "")
         if not key_value:
             return 0, False
-            
+
         keys = [key.strip() for key in re.split(r"[\s,]+", key_value) if key.strip()]
         template_count = sum(1 for key in keys if self._is_template_value(key))
         is_configured = any(not self._is_template_value(key) for key in keys)
-        
+
         return template_count, is_configured
 
     def _log_template_summary(self):
@@ -411,7 +411,7 @@ class EnvManager:
         # 记录摘要
         if configured_suppliers:
             logger.info(f"✅ 已配置供应商: {', '.join(configured_suppliers)}")
-        
+
         if total_template_keys > 0:
             logger.warning(
                 f"⚠️  待配置: {total_template_keys} 个模板密钥（{total_suppliers} 个供应商）"
@@ -422,7 +422,7 @@ class EnvManager:
                     if count > 0:
                         supplier_name = {
                             "gemini": "Gemini",
-                            "openai": "OpenAI", 
+                            "openai": "OpenAI",
                             "anthropic": "Anthropic",
                             "dify": "Dify",
                             "iflow": "iFlow",

@@ -39,13 +39,13 @@ class ProviderManager:
         logger.info("开始初始化 AI 供应商...")
 
         # 获取供应商配置
-        ai_providers = self.config.get("ai_providers", [])
+        ai_providers = self.config.get_ai_providers()
         if not ai_providers:
             # 如果没有配置供应商，使用默认的 Gemini
             ai_providers = [{"index": 1, "name": "Gemini", "id": "gemini"}]
 
         # 批量处理配置
-        batch_config = self.config.get("batch", {})
+        batch_config = self.config.get_batch_config()
 
         for provider_config in ai_providers:
             provider_id = provider_config["id"]
@@ -157,21 +157,21 @@ class ProviderManager:
 
         if provider_id == "gemini":
             # Gemini支持多密钥，返回第一个
-            gemini_keys = self.config.get("gemini_api_keys", [])
+            gemini_keys = self.config.get_gemini_api_keys()
             return gemini_keys[0] if gemini_keys else None
         elif provider_id == "openai":
-            openai_config = self.config.get("openai", {})
+            openai_config = self.config.get_openai_config()
             return openai_config.get("api_key", "")
         elif provider_id == "anthropic":
-            anthropic_config = self.config.get("anthropic", {})
+            anthropic_config = self.config.get_anthropic_config()
             return anthropic_config.get("api_key", "")
         elif provider_id == "dify":
-            dify_config = self.config.get("dify", {})
+            dify_config = self.config.get_dify_config()
             # Dify 使用 api_keys（复数），返回第一个密钥用于验证
             api_keys = dify_config.get("api_keys", [])
             return api_keys[0] if api_keys else ""
         elif provider_id == "iflow":
-            iflow_config = self.config.get("iflow", {})
+            iflow_config = self.config.get_iflow_config()
             return iflow_config.get("api_key", "")
 
         return None
@@ -210,8 +210,8 @@ class ProviderManager:
         """
         创建 Gemini 供应商实例
         """
-        gemini_keys = self.config.get("gemini_api_keys", [])
-        gemini_model = self.config.get("gemini_model", "gemini-2.0-flash-exp")
+        gemini_keys = self.config.get_gemini_api_keys()
+        gemini_model = self.config.get_gemini_model()
 
         if not gemini_keys:
             logger.warning("Gemini API 密钥未配置，将创建未配置的供应商实例")
@@ -229,7 +229,7 @@ class ProviderManager:
         """
         创建 OpenAI 供应商实例
         """
-        openai_config = self.config.get("openai", {})
+        openai_config = self.config.get_openai_config()
         api_keys = openai_config.get("api_keys", [])
         model = openai_config.get("model", "gpt-4o")
         base_url = openai_config.get("base_url", "https://api.openai.com/v1")
@@ -255,7 +255,7 @@ class ProviderManager:
         """
         创建 Anthropic 供应商实例
         """
-        anthropic_config = self.config.get("anthropic", {})
+        anthropic_config = self.config.get_anthropic_config()
         api_keys = anthropic_config.get("api_keys", [])
         model = anthropic_config.get("model", "claude-sonnet-4-20250514")
         base_url = anthropic_config.get("base_url", "https://api.anthropic.com")
@@ -281,7 +281,7 @@ class ProviderManager:
         """
         创建 Dify 供应商实例
         """
-        dify_config = self.config.get("dify", {})
+        dify_config = self.config.get_dify_config()
         api_keys = dify_config.get("api_keys", [])
         base_url = dify_config.get("base_url", "https://api.dify.ai/v1")
         app_id = dify_config.get("app_id", "")
@@ -307,7 +307,7 @@ class ProviderManager:
         """
         创建 iFlow 供应商实例
         """
-        iflow_config = self.config.get("iflow", {})
+        iflow_config = self.config.get_iflow_config()
         api_key = iflow_config.get("api_key", "")
         model = iflow_config.get("model", "qwen3-max")
         base_url = iflow_config.get("base_url", "https://apis.iflow.cn/v1")
