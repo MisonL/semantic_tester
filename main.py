@@ -593,9 +593,9 @@ class SemanticTestApp:
         validation_status = self.provider_manager.get_provider_validation_status()
 
         print(f"\n总供应商数: {validation_status['total']}")
-        print(f"✅ 验证通过: {validation_status['valid']} 个")
-        print(f"❌ 验证失败: {validation_status['invalid']} 个")
-        print(f"⚠️  未配置: {validation_status['unconfigured']} 个")
+        print(f"✅ 已配置且可用: {validation_status['valid']} 个")
+        print(f"❌ 已配置但无效: {validation_status['invalid']} 个")
+        print(f"⚠️  未配置API密钥: {validation_status['unconfigured']} 个")
 
         print("\n" + "-" * 60)
         print("详细状态:")
@@ -608,7 +608,16 @@ class SemanticTestApp:
                 else "❌" if result["status"] == "验证失败" else "⚠️"
             )
             print(f"\n{status_icon} {result['name']}")
-            print(f"   状态: {result['status']}")
+            # 优化状态描述
+            status_text = result["status"]
+            if status_text == "验证通过":
+                status_text = "已配置且可用"
+            elif status_text == "验证失败":
+                status_text = "已配置但无效"
+            elif status_text == "未配置":
+                status_text = "未配置API密钥"
+                
+            print(f"   状态: {status_text}")
             print(f"   说明: {result['message']}")
 
         print("\n" + "=" * 60)
