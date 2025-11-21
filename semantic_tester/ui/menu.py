@@ -5,7 +5,7 @@
 """
 
 import logging
-from typing import List
+from typing import List, Optional
 
 from colorama import Fore, Style
 
@@ -228,7 +228,7 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
                 print(f"{Fore.RED}❌ 请输入有效数字{Style.RESET_ALL}")
 
     @staticmethod
-    def _get_user_input(max_choice: int) -> str:
+    def _get_user_input(max_choice: int) -> Optional[str]:
         """获取用户输入"""
         try:
             user_input = input(
