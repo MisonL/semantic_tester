@@ -351,33 +351,71 @@ class ExcelProcessor:
         ), "DataFrame must be loaded before getting result columns"
         # --- 获取"语义是否与源文档相符"结果保存列 ---
         print("\n请选择'语义是否与源文档相符'结果保存列:")
-        print("现有列名:")
+        print("现有列:")
         for i, col_name in enumerate(self.column_names):
-            print(f"{i + 1}. {col_name}")
-        similarity_result_col_input = (
-            input(
-                "请输入要保存结果的列名或序号 (例如: '语义是否与源文档相符' 或直接输入新列名，默认: '语义是否与源文档相符'): "
+            # 标记自动添加的列
+            marker = " [自动添加]" if i == 0 and col_name == "文档名称" else ""
+            print(f"  {i}. {col_name}{marker}")
+        print("  新建列: 直接输入列名")
+        
+        similarity_result_col_input = input(
+            "请选择序号、输入列名或按回车使用默认: "
+        ).strip()
+        
+        if not similarity_result_col_input:
+            similarity_result_col_input = "语义是否与源文档相符"
+        
+        # 处理输入
+        try:
+            col_index = int(similarity_result_col_input)
+            if 0 <= col_index < len(self.column_names):
+                similarity_result_col_index = col_index
+                print(f"✅ 选择现有列: {self.column_names[col_index]}")
+            else:
+                print(f"⚠️  序号超出范围，将创建新列: {similarity_result_col_input}")
+                similarity_result_col_index = get_or_add_column(
+                    self.df, self.column_names, similarity_result_col_input
+                )
+        except ValueError:
+            # 输入的是列名
+            similarity_result_col_index = get_or_add_column(
+                self.df, self.column_names, similarity_result_col_input
             )
-            or "语义是否与源文档相符"
-        )
-        similarity_result_col_index = get_or_add_column(
-            self.df, self.column_names, similarity_result_col_input
-        )
+            print(f"✅ 使用列: {similarity_result_col_input}")
 
         # --- 获取"判断依据"结果保存列 ---
         print("\n请选择'判断依据'结果保存列:")
-        print("现有列名:")
+        print("现有列:")
         for i, col_name in enumerate(self.column_names):
-            print(f"{i + 1}. {col_name}")
-        reason_col_input = (
-            input(
-                "请输入要保存结果的列名或序号 (例如: '判断依据' 或直接输入新列名，默认: '判断依据'): "
+            # 标记自动添加的列
+            marker = " [自动添加]" if i == 0 and col_name == "文档名称" else ""
+            print(f"  {i}. {col_name}{marker}")
+        print("  新建列: 直接输入列名")
+        
+        reason_col_input = input(
+            "请选择序号、输入列名或按回车使用默认: "
+        ).strip()
+        
+        if not reason_col_input:
+            reason_col_input = "判断依据"
+        
+        # 处理输入
+        try:
+            col_index = int(reason_col_input)
+            if 0 <= col_index < len(self.column_names):
+                reason_col_index = col_index
+                print(f"✅ 选择现有列: {self.column_names[col_index]}")
+            else:
+                print(f"⚠️  序号超出范围，将创建新列: {reason_col_input}")
+                reason_col_index = get_or_add_column(
+                    self.df, self.column_names, reason_col_input
+                )
+        except ValueError:
+            # 输入的是列名
+            reason_col_index = get_or_add_column(
+                self.df, self.column_names, reason_col_input
             )
-            or "判断依据"
-        )
-        reason_col_index = get_or_add_column(
-            self.df, self.column_names, reason_col_input
-        )
+            print(f"✅ 使用列: {reason_col_input}")
 
         return {
             "similarity_result": (
@@ -386,6 +424,45 @@ class ExcelProcessor:
             ),
             "reason": (reason_col_input, reason_col_index),
         }
+
+    def suggest_document_names(self):
+        """
+        智能建议文档名称填充
+        
+        基于文件名或对话ID等信息为文档名称列提供填充建议
+        """
+        if "文档名称" not in self.column_names:
+            return
+            
+        # 检查文档名称列是否为空
+        doc_col_empty = self.df["文档名称"].isna().all() or (self.df["文档名称"] == "").all()
+        
+        if not doc_col_empty:
+            return  # 已经有内容，不需要建议
+            
+        print(f"\n{Fore.YELLOW}📝 检测到'文档名称'列为空，建议填充方式：{Style.RESET_ALL}")
+        print("1. 使用文件名作为文档名")
+        print("2. 使用统一文档名（手动输入）")
+        print("3. 跳过填充（稍后手动填写）")
+        
+        choice = input(f"\n{Fore.YELLOW}请选择 (1-3，默认: 3): {Style.RESET_ALL}").strip()
+        
+        if choice == "1":
+            # 使用文件名作为文档名
+            file_name = os.path.splitext(os.path.basename(self.file_path))[0]
+            self.df["文档名称"] = file_name
+            print(f"✅ 已将所有行的文档名称设置为: {file_name}")
+            
+        elif choice == "2":
+            # 使用统一文档名
+            doc_name = input(f"{Fore.YELLOW}请输入文档名称: {Style.RESET_ALL}").strip()
+            if doc_name:
+                self.df["文档名称"] = doc_name
+                print(f"✅ 已将所有行的文档名称设置为: {doc_name}")
+            else:
+                print("⚠️  文档名称为空，跳过填充")
+        else:
+            print("ℹ️  跳过文档名称填充，请稍后手动填写")
 
     def setup_result_columns(self, result_columns: Dict[str, Tuple[str, int]]):
         """

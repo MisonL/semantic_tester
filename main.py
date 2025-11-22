@@ -172,6 +172,9 @@ class SemanticTestApp:
         # 获取结果保存列配置
         result_columns = self.excel_processor.get_result_columns()
         self.excel_processor.setup_result_columns(result_columns)
+        
+        # 智能建议文档名称填充
+        self.excel_processor.suggest_document_names()
 
         # 确认知识库目录
         print(f"\n{Fore.CYAN}=== 确认任务配置 ==={Style.RESET_ALL}")
