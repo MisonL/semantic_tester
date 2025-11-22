@@ -89,9 +89,14 @@ class ExcelProcessor:
         )
 
         # 综合判断是否为dify格式
+        # 默认期望Dify Chat Tester格式
         self.is_dify_format = (
             has_question_col and has_response_col and has_timestamp_col
         )
+        
+        # 如果不是Dify格式，提供转换建议
+        if not self.is_dify_format:
+            self._suggest_dify_format_conversion()
 
         format_info: dict[str, Any] = {
             "is_dify_format": self.is_dify_format,
@@ -131,6 +136,54 @@ class ExcelProcessor:
 
         self.format_info = format_info
         return format_info
+
+    def _suggest_dify_format_conversion(self):
+        """建议转换为Dify Chat Tester格式"""
+        from colorama import Fore, Style
+        
+        print(f"\n{Fore.YELLOW}⚠️  检测到非标准Dify Chat Tester格式{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}建议使用Dify Chat Tester标准格式以获得最佳体验：{Style.RESET_ALL}")
+        print()
+        print("标准格式包含以下列：")
+        print("  • 时间戳")
+        print("  • 角色")
+        print("  • 原始问题")
+        print("  • {供应商}响应 (如: Dify响应, iFlow响应等)")
+        print("  • 是否成功")
+        print("  • 错误信息")
+        print("  • 对话ID")
+        print()
+        print("选项：")
+        print("1. 生成Dify格式模板")
+        print("2. 继续使用当前格式（可能影响功能）")
+        
+        choice = input(f"\n{Fore.YELLOW}请选择 (1-2，默认: 1): {Style.RESET_ALL}").strip()
+        
+        if choice == "2":
+            print(f"{Fore.YELLOW}⚠️  将使用当前格式，某些功能可能受限{Style.RESET_ALL}")
+            return
+        
+        # 生成Dify模板
+        try:
+            from .dify_template_generator import DifyTemplateGenerator
+            generator = DifyTemplateGenerator()
+            
+            print(f"\n{Fore.GREEN}📝 正在生成Dify Chat Tester模板...{Style.RESET_ALL}")
+            
+            # 默认生成Dify供应商模板
+            template_path = generator.generate_basic_template("dify")
+            
+            print(f"\n{Fore.CYAN}模板使用说明：{Style.RESET_ALL}")
+            print(f"1. 模板文件已生成: {template_path}")
+            print("2. 在Excel中填写您的测试问题")
+            print("3. 使用Dify Chat Tester或其他工具生成AI回答")
+            print("4. 保存后重新运行本程序进行语义评估")
+            print()
+            print(f"{Fore.GREEN}✅ 模板生成完成！{Style.RESET_ALL}")
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ 模板生成失败: {e}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}⚠️  将继续使用当前格式{Style.RESET_ALL}")
 
     def display_format_info(self):
         """显示格式检测结果"""

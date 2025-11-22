@@ -3,6 +3,8 @@
 AI客服问答语义比对工具
 
 主程序入口点 - 使用模块化架构
+
+🔗 完美集成 Dify Chat Tester，支持直接读取其输出进行语义评估
 """
 
 import logging
@@ -520,6 +522,36 @@ class SemanticTestApp:
     def run_menu_mode(self):
         """运行菜单模式"""
         from semantic_tester.ui.menu import MenuHandler
+
+        # 显示启动信息，强调Dify Chat Tester集成
+        self._show_startup_info()
+
+        menu_handler = MenuHandler()
+
+        def _show_startup_info(self):
+        """显示启动信息，强调Dify Chat Tester集成"""
+        from colorama import Fore, Style
+        
+        print(f"\n{Fore.CYAN}🚀 AI客服问答语义比对工具{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}🔗 完美集成 Dify Chat Tester{Style.RESET_ALL}")
+        print()
+        print("• 直接读取 Dify Chat Tester 输出文件")
+        print("• 自动适配 Dify 格式列映射")
+        print("• 智能检测并建议格式转换")
+        print("• 支持多供应商语义评估")
+        print()
+        print(f"{Fore.YELLOW}💡 推荐工作流程：{Style.RESET_ALL}")
+        print("1. 使用 Dify Chat Tester 生成测试数据")
+        print("2. 本程序自动识别格式并评估语义质量")
+        print("3. 生成详细的语义分析报告")
+        print()
+
+    def run_menu_mode(self):
+        """运行菜单模式"""
+        from semantic_tester.ui.menu import MenuHandler
+
+        # 显示启动信息，强调Dify Chat Tester集成
+        self._show_startup_info()
 
         menu_handler = MenuHandler()
 
