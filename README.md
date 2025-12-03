@@ -23,7 +23,7 @@
 
 ### 🧠 多供应商智能语义比对
 
-- **多 AI 供应商支持**: Gemini、OpenAI、Dify、iFlow
+- **多 AI 供应商支持**: Gemini、OpenAI、Anthropic、Dify、iFlow
 - 统一的语义分析接口，供应商间无缝切换
 - 判断 AI 回答与知识库文档的语义一致性
 - 输出标准化的比对结果和判断依据
@@ -90,6 +90,12 @@
 2. **获取应用 API 密钥**：从应用设置中获取 API 密钥
 3. **获取 API 地址**：私有化部署需要配置正确的 API 地址
 
+### Anthropic API
+
+1. **访问 Anthropic Console**：[https://console.anthropic.com](https://console.anthropic.com)
+2. **创建 API 密钥**：从账户设置中创建新的 API 密钥
+3. **支持的模型**：claude-3-5-sonnet-20241022、claude-3-opus-20240229 等
+
 ### iFlow API
 
 1. **访问 iFlow 平台**：[https://iflow.cn](https://iflow.cn)
@@ -142,6 +148,10 @@ OPENAI_API_KEY=sk-your-openai-key
 # Dify API
 DIFY_API_KEY=app-your-dify-key
 DIFY_BASE_URL=https://api.dify.ai/v1
+
+# Anthropic API
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 
 # iFlow API
 IFLOW_API_KEY=sk-your-iflow-key
@@ -243,25 +253,34 @@ semantic_tester/
 ├── __main__.py              # 模块入口点
 ├── api/                     # API 接口层
 │   ├── __init__.py
-│   └── gemini_handler.py    # Gemini API 处理
+│   ├── base_provider.py     # 供应商基类
+│   ├── gemini_provider.py   # Gemini API 处理
+│   ├── openai_provider.py   # OpenAI API 处理
+│   ├── anthropic_provider.py# Anthropic API 处理
+│   ├── dify_provider.py     # Dify API 处理
+│   ├── iflow_provider.py    # iFlow API 处理
+│   ├── provider_manager.py  # 供应商管理器
+│   └── prompts.py           # 提示词模板
 ├── config/                  # 配置管理层
 │   ├── __init__.py
 │   ├── environment.py       # 环境变量管理
-│   └── settings.py          # 配置文件管理
+│   ├── settings.py          # 配置文件管理
+│   └── env_loader.py        # 配置加载器
 ├── excel/                   # Excel 处理层
 │   ├── __init__.py
-│   ├── processor.py         # Excel 数据处理
-│   └── utils.py             # Excel 工具函数
+│   └── processor.py         # Excel 数据处理
 ├── ui/                      # 用户界面层
 │   ├── __init__.py
 │   ├── cli.py               # 命令行界面
-│   └── menu.py              # 交互式菜单
+│   ├── terminal_ui.py       # 终端界面
+│   └── menu.py              # 交互式菜单（已废弃）
 └── utils/                   # 工具函数层
     ├── __init__.py
     ├── file_utils.py        # 文件操作工具
     ├── format_utils.py      # 格式化工具
     ├── logger_utils.py      # 日志工具
-    └── validation_utils.py  # 验证工具
+    ├── validation_utils.py  # 验证工具
+    └── dify_template_generator.py  # Dify 模板生成器
 ```
 
 ### 代码质量保证
