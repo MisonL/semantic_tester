@@ -84,16 +84,6 @@ if exist "%PROJECT_DIR%\release_windows\semantic_tester.exe" (
     echo Build successful!
     echo Executable location: %PROJECT_DIR%\release_windows\semantic_tester.exe
     
-    REM Copy config file
-    echo Copying config file...
-    copy "%PROJECT_DIR%\.env.config.example" "%PROJECT_DIR%\release_windows\" >nul
-    
-    REM Copy README
-    if exist "%PROJECT_DIR%\README.md" (
-        echo Copying README...
-        copy "%PROJECT_DIR%\README.md" "%PROJECT_DIR%\release_windows\" >nul
-    )
-    
     REM Create compressed package
     echo Creating compressed package...
     
@@ -102,7 +92,7 @@ if exist "%PROJECT_DIR%\release_windows\semantic_tester.exe" (
     
     cd /d "%PROJECT_DIR%"
     
-    REM Create ZIP archive
+    REM Create ZIP archive (Python script handles file copying and zipping)
     echo Creating ZIP archive...
     py "%SCRIPT_DIR%create_release_zip.py"
     
