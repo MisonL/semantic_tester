@@ -1,6 +1,6 @@
 """
 配置加载器
-从 .env 文件中加载所有配置参数
+从 .env.config 文件中加载所有配置参数
 
 参考 dify_chat_tester 项目设计，适配 semantic_tester 需求
 """
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class EnvLoader:
-    """环境配置加载器 - 从 .env 文件加载配置"""
+    """环境配置加载器 - 从 .env.config 文件加载配置"""
 
-    def __init__(self, env_file: str = ".env"):
+    def __init__(self, env_file: str = ".env.config"):
         self.env_file = env_file
         self.config: dict[str, Any] = {}
         self.load_config()
@@ -126,6 +126,8 @@ class EnvLoader:
             "API_TIMEOUT": "60",
             "API_RETRY_COUNT": "5",
             "API_RETRY_DELAY": "60",
+            "USE_FULL_DOC_MATCH": "false",
+            "ENABLE_THINKING": "true",  # 默认开启思维链
         }
 
     # 配置获取方法
@@ -205,7 +207,8 @@ class EnvLoader:
         ai_providers = self.get_ai_providers()
         print(f"AI供应商: {', '.join([p['name'] for p in ai_providers])}")
 
-        gemini_keys = self.get_list("GEMINI_API_KEY")
+        # 支持 GEMINI_API_KEY / GEMINI_API_KEYS 两种命名
+        gemini_keys = self.get_list("GEMINI_API_KEY") or self.get_list("GEMINI_API_KEYS")
         print(
             f"Gemini API密钥: {'已配置' if gemini_keys else '未配置'} ({len(gemini_keys)} 个)"
         )

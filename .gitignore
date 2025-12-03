@@ -4,10 +4,15 @@ __pycache__/
 *.pyd
 *.pyo
 .Python
-build/
+# Build directories (keep scripts, ignore outputs)
+build/dist/
+build/semantic_tester/
+build/semantic_tester.build/
+build/semantic_tester.dist/
+build/__pycache__/
 dist/
 *.egg-info/
-.env
+.env.config
 
 # Virtual environment
 venv/
@@ -17,9 +22,16 @@ venv/
 logs/
 *.log
 
-# Excel output files
+# Excel files (all xlsx, xls, and temporary files)
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+~$*.xlsx
+~$*.xls
 *_评估结果.xlsx
 batch_query_log_*.xlsx
+question_generation_*.xlsx
 
 # Temporary files
 *.tmp
@@ -34,3 +46,15 @@ temp*
 
 # Operating System files
 .DS_Store
+
+# Knowledge Base Docs
+kb-docs/
+
+# Build and release directories
+release/
+release_macos/
+release_windows/
+*.tar.gz
+*.zip
+*.dmg
+*.exe

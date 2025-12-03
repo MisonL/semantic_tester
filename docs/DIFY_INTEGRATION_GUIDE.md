@@ -26,8 +26,8 @@ uv sync
 
 ### 2. 环境变量配置
 ```bash
-# 设置 Gemini API 密钥
-export GEMINI_API_KEYS='your_gemini_key_1,your_gemini_key_2'
+# 设置 Gemini API 密钥（推荐 GEMINI_API_KEY，兼容 GEMINI_API_KEYS）
+export GEMINI_API_KEY='your_gemini_key_1,your_gemini_key_2'
 
 # 可选：指定模型版本
 export GEMINI_MODEL='models/gemini-2.5-flash'

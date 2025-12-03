@@ -4,21 +4,33 @@ AI客服问答语义比对工具
 
 主程序入口点 - 使用模块化架构
 
+作者：Mison
+邮箱：1360962086@qq.com
+仓库：https://github.com/MisonL/semantic_tester
+许可证：MIT
+
 🔗 完美集成 Dify Chat Tester，支持直接读取其输出进行语义评估
 """
 
 import logging
+import os
 import sys
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from colorama import Fore, Style
 
-# 导入项目模块
-from semantic_tester.api import GeminiAPIHandler, check_semantic_similarity
-from semantic_tester.api.provider_manager import ProviderManager
-from semantic_tester.excel import ExcelProcessor
-from semantic_tester.ui import CLIInterface
+# 导入版本信息
+from semantic_tester import __version__, __author__, __email__, __license__
+
+# 延迟导入优化：只导入最基本的模块
 from semantic_tester.config import EnvManager, Config
-from semantic_tester.utils import FileUtils, LoggerUtils, ValidationUtils
+from semantic_tester.utils import LoggerUtils
+
+if TYPE_CHECKING:
+    from semantic_tester.api import check_semantic_similarity  # noqa: F401
+    from semantic_tester.api.provider_manager import ProviderManager  # noqa: F401
+    from semantic_tester.excel import ExcelProcessor  # noqa: F401
+    from semantic_tester.ui import CLIInterface  # noqa: F401
+    from semantic_tester.utils import FileUtils, ValidationUtils  # noqa: F401
 
 # 设置日志 - 使用简洁模式
 LoggerUtils.setup_logging(quiet_console=True)
@@ -32,9 +44,9 @@ class SemanticTestApp:
         """初始化应用"""
         self.env_manager = EnvManager()
         self.config = Config()
-        self.api_handler: Optional[GeminiAPIHandler] = None  # 保持向后兼容
-        self.provider_manager: Optional[ProviderManager] = None  # 新的多供应商管理器
-        self.excel_processor: Optional[ExcelProcessor] = None
+        self.api_handler: Optional["GeminiAPIHandler"] = None  # 保持向后兼容
+        self.provider_manager: Optional["ProviderManager"] = None  # 新的多供应商管理器
+        self.excel_processor: Optional["ExcelProcessor"] = None
 
     def initialize(self) -> bool:
         """
@@ -43,8 +55,6 @@ class SemanticTestApp:
         Returns:
             bool: 初始化是否成功
         """
-        # 显示简洁启动横幅
-        LoggerUtils.print_startup_banner()
 
         # 记录系统信息到文件（不在控制台显示）
         LoggerUtils.log_system_info()
@@ -61,22 +71,6 @@ class SemanticTestApp:
             logger.error(f"初始化供应商管理器失败: {e}")
             return False
 
-        # 保持向后兼容性：如果有 Gemini 密钥，初始化传统处理器
-        if self.env_manager.gemini_api_keys:
-            try:
-                # 静默初始化传统处理器
-                LoggerUtils.silence_console_temporarily()
-                self.api_handler = GeminiAPIHandler(
-                    api_keys=self.env_manager.gemini_api_keys,
-                    model_name=self.env_manager.get_gemini_model(),
-                    prompt_template="",  # semantic_tester 的提示词在 get_prompt 方法中构建
-                )
-                LoggerUtils.restore_console_level()
-                logger.info("传统 Gemini API 处理器已初始化（向后兼容）")
-            except Exception as e:
-                LoggerUtils.restore_console_level()
-                logger.error(f"初始化传统 Gemini API 处理器失败: {e}")
-
         # 显示供应商状态摘要
         if self.provider_manager:
             providers_info = {
@@ -88,6 +82,7 @@ class SemanticTestApp:
                     else "无"
                 ),
             }
+            print()  # 添加空行，避免与前面内容同行
             LoggerUtils.print_provider_summary(providers_info)
 
             # 如果没有配置的供应商，显示提示
@@ -101,6 +96,9 @@ class SemanticTestApp:
 
     def _initialize_provider_manager(self):
         """初始化供应商管理器"""
+        # 延迟导入以加快启动速度
+        from semantic_tester.api.provider_manager import ProviderManager  # noqa: F811
+
         # 直接传递EnvManager实例
         self.provider_manager = ProviderManager(self.env_manager)
 
@@ -108,8 +106,12 @@ class SemanticTestApp:
         if not self.provider_manager:
             logger.error("供应商管理器初始化失败")
 
-    def run_interactive_mode(self):
+    def run_interactive_mode(self):  # noqa: C901
         """运行交互式模式"""
+        # 延迟导入所需模块（实际运行时才加载）
+        from semantic_tester.ui import CLIInterface  # noqa: F811
+        from semantic_tester.excel import ExcelProcessor  # noqa: F811
+
         CLIInterface.print_header()
 
         # 供应商选择和配置
@@ -117,7 +119,7 @@ class SemanticTestApp:
             # 如果没有已配置的供应商，提供配置选项
             if not self.provider_manager.has_configured_providers():
                 print("\n⚠️  未检测到已配置的 AI 供应商")
-                configure = input("是否现在配置 API 密钥? (y/N): ").strip().lower()
+                configure = input("是否现在配置 API 密钥? (y/N，默认: N): ").strip().lower()
                 if configure in ["y", "yes"]:
                     CLIInterface.configure_api_keys_interactive(self.env_manager)
                     # 重新初始化供应商管理器以加载新配置
@@ -145,6 +147,7 @@ class SemanticTestApp:
         self.excel_processor.display_format_info()
 
         # 自动适配 dify 格式
+        use_auto_config = False
         if format_info["is_dify_format"]:
             self.excel_processor.auto_add_document_column()
 
@@ -157,12 +160,21 @@ class SemanticTestApp:
                 # 更新格式信息中的响应列
                 format_info["response_cols"] = [selected_response_col]
 
-            # 询问是否使用自动配置
+            # 询问是否使用自动配置 (只确认一次)
+            print(f"\n{Fore.CYAN}自动配置将包含：{Style.RESET_ALL}")
+            print("  • 列映射: 文档名称、问题点、AI客服回答")
+            print("  • 结果列: 语义是否与源文档相符、判断依据")
+            print("  • 缺失的列将自动添加")
+
             if CLIInterface.confirm_auto_config():
+                # 自动配置模式：一次性完成所有配置
+                use_auto_config = True
                 column_mapping = self.excel_processor.get_user_column_mapping(
                     auto_config=True
                 )
+                # 不再显示列映射确认，已在display_format_info中显示过
             else:
+                # 手动配置
                 column_mapping = self.excel_processor.get_user_column_mapping(
                     auto_config=False
                 )
@@ -171,12 +183,18 @@ class SemanticTestApp:
                 auto_config=False
             )
 
-        # 获取结果保存列配置
-        result_columns = self.excel_processor.get_result_columns()
+        # 获取结果保存列配置 (如果是自动配置模式，静默添加)
+        result_columns = self.excel_processor.get_result_columns(
+            auto_config=use_auto_config
+        )
+        if use_auto_config:
+            print(
+                f"\n{Fore.GREEN}✅ 已自动添加结果列: 语义是否与源文档相符、判断依据{Style.RESET_ALL}"
+            )
         self.excel_processor.setup_result_columns(result_columns)
-        
+
         # 智能建议文档名称填充
-        self.excel_processor.suggest_document_names()
+        self.excel_processor.suggest_document_names(auto_config=use_auto_config)
 
         # 确认知识库目录
         print(f"\n{Fore.CYAN}=== 确认任务配置 ==={Style.RESET_ALL}")
@@ -189,18 +207,50 @@ class SemanticTestApp:
         print(f"✅ 输出目录: {output_path}")
 
         # 获取其他配置
-        show_comparison_result = CLIInterface.ask_show_comparison_result()
+        if use_auto_config:
+            show_comparison_result = True
+            # print(f"✅ 默认显示比对结果") # 保持界面简洁，不打印多余信息
+        else:
+            show_comparison_result = CLIInterface.ask_show_comparison_result()
 
         # 确保输出目录存在
         self.config.ensure_output_dir(output_path)
 
         # 最终确认
         from semantic_tester.ui.menu import MenuHandler
-        if MenuHandler.confirm_action("确认开始处理吗？"):
-            print(f"\n{Fore.GREEN}开始处理数据...{Style.RESET_ALL}")
+
+        # 询问是否启用全量文档匹配
+        print(f"\n{Fore.CYAN}⚙️  匹配模式设置{Style.RESET_ALL}")
+        print("全量文档匹配模式将忽略 Excel 中的'文档名称'列，直接使用知识库中的所有文档进行比对。")
+        
+        # 从环境变量获取默认值
+        # default_full_match = self.env_manager.get_use_full_doc_match()
+        use_full_doc_match = MenuHandler.confirm_action("是否启用全量文档匹配？", default=False)
+        
+        if use_full_doc_match:
+            print(f"{Fore.GREEN}✅ 已启用全量文档匹配{Style.RESET_ALL}")
         else:
-            print("操作已取消")
-            return
+            print(f"{Fore.YELLOW}📋 使用指定文档匹配模式{Style.RESET_ALL}")
+
+        # 询问是否启用流式输出
+        print(f"\n{Fore.CYAN}⚙️  流式输出设置{Style.RESET_ALL}")
+        print("流式输出可以实时显示 AI 的思考过程，让您了解评估进展。")
+        enable_stream = MenuHandler.confirm_action("是否启用流式输出？", default=True)
+        
+        if enable_stream:
+            print(f"{Fore.GREEN}✅ 已启用流式输出{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.YELLOW}📋 使用标准输出模式{Style.RESET_ALL}")
+
+        # 如果是自动配置模式，跳过最终确认
+        if use_auto_config:
+            print(f"\n{Fore.GREEN}🚀 自动配置就绪，开始处理数据...{Style.RESET_ALL}")
+        else:
+            if MenuHandler.confirm_action("确认开始处理吗？"):
+                print(f"\n{Fore.GREEN}开始处理数据...{Style.RESET_ALL}")
+            else:
+                print("操作已取消")
+                return
 
         # 开始处理
         self.process_data(
@@ -209,6 +259,8 @@ class SemanticTestApp:
             result_columns=result_columns,
             output_path=output_path,
             show_comparison_result=show_comparison_result,
+            enable_stream=enable_stream,
+            use_full_doc_match=use_full_doc_match,
         )
 
     def process_data(
@@ -218,30 +270,193 @@ class SemanticTestApp:
         result_columns: dict,
         output_path: str,
         show_comparison_result: bool,
+        enable_stream: bool = False,
+        use_full_doc_match: bool = False,
     ):
-        """
-        处理数据
-
+        """处理数据
+        
         Args:
             knowledge_base_dir: 知识库目录
             column_mapping: 列映射配置
             result_columns: 结果列配置
             output_path: 输出路径
             show_comparison_result: 是否显示比对结果
+            enable_stream: 是否启用流式输出
         """
+        # 保存流式输出 / 思维链配置
+        self.enable_stream = enable_stream
+        # 思维链默认由环境变量 ENABLE_THINKING 控制（默认开启）
+        try:
+            self.enable_thinking = self.env_manager.get_enable_thinking()
+        except AttributeError:
+            # 向后兼容：如果 EnvManager 暂未实现该方法，则默认开启
+            self.enable_thinking = True
+        # 延迟导入
+        from semantic_tester.ui import CLIInterface
+        
         excel_processor = self._get_excel_processor_or_error()
         if not excel_processor:
             return
 
         total_records = excel_processor.get_total_records()
-        logger.info(f"共需处理 {total_records} 条问答记录。")
+        
+        # 尝试加载现有结果以恢复进度
+        loaded_count = 0
+        if os.path.exists(output_path):
+            print(f"\n{Fore.CYAN}检测到现有输出文件，正在检查进度...{Style.RESET_ALL}")
+            loaded_count = excel_processor.load_existing_results(output_path, result_columns)
+            if loaded_count > 0:
+                print(f"{Fore.GREEN}已恢复 {loaded_count} 条历史记录，将跳过已处理的项目。{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}未发现有效历史记录，将重新开始处理。{Style.RESET_ALL}")
 
+        logger.info(f"共需处理 {total_records} 条问答记录。")
+        
         processed_count = 0
         skipped_count = 0
         error_count = 0
+        
+        # 如果恢复了进度，更新统计信息（假设恢复的都是处理成功的）
+        # 实际上我们需要遍历来准确统计，或者简单地只统计本次运行的
+        # 这里我们只统计本次运行的新增处理，但在进度条显示时会考虑已处理的
+        
+        already_processed_count = loaded_count
+        failed_rows = [] # 记录失败的行索引
+
+        # --- 检测已有失败结果并询问是否重试 ---
+        retry_rows = []  # 需要重试的行索引
+        similarity_col_name = result_columns["similarity_result"][0]
+        
+        # 扫描已有结果，查找需要重试的记录
+        for i in range(total_records):
+            if excel_processor.has_result(i, result_columns):
+                # 获取当前结果
+                current_result = excel_processor.get_result(i, similarity_col_name)
+                # 检查是否为失败状态
+                if current_result in ["否", "错误", "不确定"]:
+                    retry_rows.append(i)
+        
+        if retry_rows:
+            from semantic_tester.ui.menu import MenuHandler
+            print(f"\n{Fore.YELLOW}📊 检测到历史评估记录中有 {len(retry_rows)} 条结果为 '否'、'错误' 或 '不确定'{Style.RESET_ALL}")
+            print(f"   总记录数: {total_records}")
+            print(f"   需重新评估: {len(retry_rows)}")
+            print()
+            
+            if MenuHandler.confirm_action(f"是否重新评估这 {len(retry_rows)} 条记录？", default=True):
+                print(f"\n{Fore.CYAN}🔄 准备重新评估 {len(retry_rows)} 条记录...{Style.RESET_ALL}\n")
+                
+                # 使用重试行列表，跳过正常的处理逻辑
+                for idx, row_index in enumerate(retry_rows, 1):
+                    # 显示重试进度
+                    print(f"{Fore.CYAN}📊 正在重新评估第 {idx}/{len(retry_rows)} 条记录 (行 {row_index + 1})...{Style.RESET_ALL}")
+                    
+                    result = self._process_single_row(
+                        row_index=row_index,
+                        total_records=total_records,
+                        knowledge_base_dir=knowledge_base_dir,
+                        column_mapping=column_mapping,
+                        result_columns=result_columns,
+                        output_path=output_path,
+                        show_comparison_result=show_comparison_result,
+                        excel_processor=excel_processor,
+                        use_full_doc_match=use_full_doc_match,
+                        is_retry=True
+                    )
+                    
+                    if result == "processed":
+                        processed_count += 1
+                    elif result == "skipped":
+                        skipped_count += 1
+                    elif result == "error":
+                        error_count += 1
+                        failed_rows.append(row_index)
+                    
+                    # 定期保存中间结果（每10条）
+                    if idx % 10 == 0:
+                        excel_processor.save_intermediate_results(output_path, idx)
+                
+                # 保存重试结果
+                excel_processor.save_final_results(output_path)
+                
+                # 显示重试结果汇总
+                provider_name = self.provider_manager.get_current_provider_name() if self.provider_manager else "未知"
+                current_provider = self.provider_manager.get_current_provider() if self.provider_manager else None
+                model_name = getattr(current_provider, "model", "默认模型") if current_provider else "默认模型"
+                
+                CLIInterface.print_detailed_result_summary(
+                    total=len(retry_rows),
+                    processed=processed_count,
+                    skipped=skipped_count,
+                    errors=error_count,
+                    file_path=excel_processor.excel_path,
+                    output_path=output_path,
+                    provider_name=provider_name,
+                    model_name=model_name
+                )
+                
+                print(f"\n{Fore.GREEN}✅ 重新评估完成！{Style.RESET_ALL}")
+                return  # 完成重试后直接返回，不再继续常规处理
+            else:
+                print(f"\n{Fore.YELLOW}⏭️  跳过重新评估，继续处理未评估的记录...{Style.RESET_ALL}\n")
+
+        # --- 预检（Dry Run）逻辑 ---
+        # 仅当还有未处理记录时才询问
+        if processed_count + already_processed_count < total_records:
+            from semantic_tester.ui.menu import MenuHandler
+            
+            # 查找第一条未处理的记录
+            first_unprocessed_index = -1
+            for i in range(total_records):
+                if not excel_processor.has_result(i, result_columns):
+                    first_unprocessed_index = i
+                    break
+            
+            if first_unprocessed_index != -1:
+                if MenuHandler.confirm_action("是否先测试第一条未处理记录以验证配置？", default=True):
+                    print(f"\n{Fore.CYAN}🔍 正在执行预检测试 (第 {first_unprocessed_index + 1} 条记录)...{Style.RESET_ALL}")
+                    
+                    # 执行测试
+                    test_result = self._process_single_row(
+                        row_index=first_unprocessed_index,
+                        total_records=total_records,
+                        knowledge_base_dir=knowledge_base_dir,
+                        column_mapping=column_mapping,
+                        result_columns=result_columns,
+                        output_path=output_path,
+                        show_comparison_result=True, # 强制显示测试结果
+                        excel_processor=excel_processor,
+                        use_full_doc_match=use_full_doc_match,
+                        is_retry=False
+                    )
+                    
+                    if test_result == "error":
+                        print(f"\n{Fore.RED}❌ 预检测试失败！{Style.RESET_ALL}")
+                        print("请检查 API 配置、网络连接或文档路径。")
+                        if not MenuHandler.confirm_action("⚠️  警告：测试失败。是否仍要强行继续批量处理？", default=False):
+                            print("操作已取消。")
+                            return
+                    else:
+                        print(f"\n{Fore.GREEN}✅ 预检测试通过！{Style.RESET_ALL}")
+                        if not MenuHandler.confirm_action("准备就绪，是否开始批量处理剩余记录？", default=True):
+                            print("操作已取消。")
+                            return
+                        
+                        # 如果测试通过，更新计数器（因为该行已被处理）
+                        if test_result == "processed":
+                            processed_count += 1
+                        elif test_result == "skipped":
+                            skipped_count += 1
 
         # 处理每一行数据
         for row_index in range(total_records):
+            # 检查是否已处理
+            if excel_processor.has_result(row_index, result_columns):
+                # 如果已处理，跳过
+                # 可以在这里打印一条跳过日志，或者静默跳过
+                # 为了不刷屏，我们静默跳过，但在进度条上体现
+                continue
+
             result = self._process_single_row(
                 row_index=row_index,
                 total_records=total_records,
@@ -251,25 +466,154 @@ class SemanticTestApp:
                 output_path=output_path,
                 show_comparison_result=show_comparison_result,
                 excel_processor=excel_processor,
+                use_full_doc_match=use_full_doc_match,
             )
-
+            
             if result == "processed":
                 processed_count += 1
             elif result == "skipped":
                 skipped_count += 1
             else:
                 error_count += 1
+                failed_rows.append(row_index)
 
         # 保存最终结果
         excel_processor.save_final_results(output_path)
-
+        
+        # 处理失败的记录 (如果有)
+        if failed_rows:
+             self._handle_failed_rows(
+                failed_rows,
+                knowledge_base_dir,
+                column_mapping,
+                result_columns,
+                output_path,
+                show_comparison_result,
+                excel_processor,
+                use_full_doc_match=use_full_doc_match
+            )
+            # 更新错误计数（减去重试成功的）
+            # 注意：这里的逻辑稍微有点复杂，因为 _handle_failed_rows 可能会递归
+            # 为了简化，我们不再更新这里的 error_count，因为摘要已经打印过了
+            # 如果需要更新摘要，应该在 _handle_failed_rows 结束后再次打印摘要，或者不打印初始摘要
+            # 现在的流程是：打印初始摘要 -> 询问重试 -> 重试 -> 打印重试结果
+            
+        # 再次保存（以防重试修改了结果）
+        excel_processor.save_final_results(output_path)
+        
         # 显示处理摘要
-        CLIInterface.print_result_summary(
+        # 注意：这里的统计数据只包含本次运行处理的数据
+        # 如果需要包含之前的，可以加上 already_processed_count
+        
+        # 获取当前供应商信息
+        provider_name = "未知"
+        model_name = "未知"
+        if self.provider_manager:
+            current_provider = self.provider_manager.get_current_provider()
+            if current_provider:
+                provider_name = current_provider.name
+                model_name = getattr(current_provider, "model", "默认模型")
+        elif self.api_handler:
+            provider_name = "Gemini (Legacy)"
+            model_name = self.api_handler.model_name
+
+        CLIInterface.print_detailed_result_summary(
             total=total_records,
-            processed=processed_count,
+            processed=processed_count + already_processed_count, # 包含历史处理的
             skipped=skipped_count,
             errors=error_count,
+            file_path=excel_processor.excel_path,
+            output_path=output_path,
+            provider_name=provider_name,
+            model_name=model_name
         )
+        
+        # 处理失败的记录
+        if error_count > 0:
+            # 收集失败的行索引（这里需要重新扫描一下或者在循环中记录）
+            # 为了简单起见，我们假设 error_count > 0 时需要处理
+            # 但实际上我们需要具体的行索引。
+            # 让我们修改上面的循环来收集 failed_rows
+            pass # 逻辑已移至下方 _handle_failed_rows 调用
+
+    def _handle_failed_rows(
+        self,
+        failed_rows: list,
+        knowledge_base_dir: str,
+        column_mapping: dict,
+        result_columns: dict,
+        output_path: str,
+        show_comparison_result: bool,
+        excel_processor: "ExcelProcessor",
+        use_full_doc_match: bool = False,
+    ):
+        """
+        处理失败的行
+        """
+        from semantic_tester.ui import CLIInterface
+        from semantic_tester.ui.menu import MenuHandler
+        
+        if not failed_rows:
+            return
+
+        print(f"\n{Fore.YELLOW}⚠️ 有 {len(failed_rows)} 条记录处理失败。{Style.RESET_ALL}")
+        
+        if not MenuHandler.confirm_action("是否尝试重试这些失败的记录？"):
+            return
+
+        # 询问是否更换 AI 供应商
+        if MenuHandler.confirm_action("是否更换 AI 供应商进行重试？"):
+            if self.provider_manager:
+                selected_provider_id = CLIInterface.select_ai_provider(
+                    self.provider_manager
+                )
+                if selected_provider_id:
+                    print(f"{Fore.GREEN}已切换供应商，准备重试...{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}供应商管理器不可用，无法切换。{Style.RESET_ALL}")
+
+        print(f"\n{Fore.GREEN}开始重试 {len(failed_rows)} 条失败记录...{Style.RESET_ALL}")
+        
+        new_failed_rows = []
+        retry_processed_count = 0
+        
+        for row_index in failed_rows:
+            result = self._process_single_row(
+                row_index=row_index,
+                total_records=len(failed_rows), # 这里的总数显示为待重试数可能更直观，但为了保持一致性...
+                # 或者我们可以传递一个特殊的 flag 让 _process_single_row 显示 "重试进度"
+                knowledge_base_dir=knowledge_base_dir,
+                column_mapping=column_mapping,
+                result_columns=result_columns,
+                output_path=output_path,
+                show_comparison_result=show_comparison_result,
+                excel_processor=excel_processor,
+                use_full_doc_match=use_full_doc_match,
+                is_retry=True
+            )
+            
+            if result == "error":
+                new_failed_rows.append(row_index)
+            elif result == "processed":
+                retry_processed_count += 1
+        
+        # 保存最终结果
+        excel_processor.save_final_results(output_path)
+        
+        print(f"\n{Fore.CYAN}重试完成。成功修复: {retry_processed_count} 条，仍失败: {len(new_failed_rows)} 条。{Style.RESET_ALL}")
+        
+        if new_failed_rows:
+            if MenuHandler.confirm_action("仍有失败记录，是否继续重试？"):
+                self._handle_failed_rows(
+                    new_failed_rows,
+                    knowledge_base_dir,
+                    column_mapping,
+                    result_columns,
+                    output_path,
+                    show_comparison_result,
+                    excel_processor,
+                    use_full_doc_match=use_full_doc_match
+                )
 
     def _validate_excel_processor(self) -> bool:
         """
@@ -309,6 +653,8 @@ class SemanticTestApp:
         output_path: str,
         show_comparison_result: bool,
         excel_processor: "ExcelProcessor",
+        use_full_doc_match: bool = False,
+        **kwargs
     ) -> str:
         """
         处理单行数据
@@ -325,10 +671,19 @@ class SemanticTestApp:
         Returns:
             str: 处理结果状态 ("processed", "skipped", "error")
         """
-        row_number = row_index + 1
+        # 延迟导入
+        from semantic_tester.ui import CLIInterface  # noqa: F811
+        from semantic_tester.utils import ValidationUtils  # noqa: F811
+        import time
 
-        # 显示处理进度
-        CLIInterface.print_progress(row_number, total_records)
+        row_number = row_index + 1
+        
+        # 如果是重试模式，进度显示略有不同（可选）
+        if kwargs.get("is_retry", False):
+            logger.info(f"正在重试第 {row_number} 行...")
+        else:
+            # 显示处理进度
+            CLIInterface.print_progress(row_number, total_records)
 
         # 获取行数据
         row_data = excel_processor.get_row_data(row_index, column_mapping)
@@ -337,54 +692,85 @@ class SemanticTestApp:
         validation_errors = ValidationUtils.validate_row_data(row_data)
         if validation_errors:
             self._handle_validation_errors(
-                row_index, row_number, total_records, validation_errors,
-                result_columns, output_path, excel_processor
+                row_index,
+                row_number,
+                total_records,
+                validation_errors,
+                result_columns,
+                output_path,
+                excel_processor,
             )
             return "skipped"
 
         # 读取知识库文档内容
         doc_content = self._read_document_content(
-            knowledge_base_dir=knowledge_base_dir, doc_name=row_data["doc_name"]
+            knowledge_base_dir=knowledge_base_dir, 
+            doc_name=row_data["doc_name"],
+            use_full_doc_match=use_full_doc_match
         )
 
         if not doc_content:
             self._handle_missing_document(
-                row_index, row_number, total_records, row_data["doc_name"],
-                result_columns, output_path, excel_processor
+                row_index,
+                row_number,
+                total_records,
+                row_data["doc_name"],
+                result_columns,
+                output_path,
+                excel_processor,
             )
             return "error"
 
-        # 调用语义比对 API
-        try:
-            result, reason = self._call_semantic_api(row_data, doc_content)
+        # 调用语义比对 API (带重试机制)
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                result, reason = self._call_semantic_api(row_data, doc_content)
 
-            # 保存结果
-            excel_processor.save_result(
-                row_index=row_index,
-                result=result,
-                reason=reason,
-                result_columns=result_columns,
-            )
+                # 检查结果是否有效
+                if result != "错误":
+                    # 保存结果
+                    excel_processor.save_result(
+                        row_index=row_index,
+                        result=result,
+                        reason=reason,
+                        result_columns=result_columns,
+                    )
 
-            # 显示结果（如果启用）
-            if show_comparison_result and result not in ["错误", "跳过"]:
-                CLIInterface.print_comparison_result(
-                    doc_name=row_data["doc_name"],
-                    question=row_data["question"],
-                    result=result,
-                    reason=reason,
-                )
+                    # 显示结果（如果启用）
+                    if show_comparison_result and result not in ["错误", "跳过"]:
+                        CLIInterface.print_comparison_result(
+                            doc_name=row_data["doc_name"],
+                            question=row_data["question"],
+                            ai_answer=row_data["ai_answer"],
+                            result=result,
+                            reason=reason,
+                        )
 
-            # 保存中间结果
-            excel_processor.save_intermediate_results(output_path, row_number)
+                    # 保存中间结果
+                    excel_processor.save_intermediate_results(output_path, row_number)
 
-            return "processed" if result not in ["错误", "跳过"] else "error"
-
-        except Exception as e:
-            self._handle_processing_error(
-                row_index, row_number, e, result_columns, output_path, excel_processor
-            )
-            return "error"
+                    return "processed"
+                
+                # 如果结果是"错误"，记录警告并重试
+                logger.warning(f"第 {row_number} 行处理返回错误 (尝试 {attempt + 1}/{max_retries}): {reason}")
+                last_error = Exception(reason)
+                
+            except Exception as e:
+                logger.warning(f"第 {row_number} 行发生异常 (尝试 {attempt + 1}/{max_retries}): {e}")
+                last_error = e
+            
+            # 如果不是最后一次尝试，等待后重试
+            if attempt < max_retries - 1:
+                time.sleep(1)
+        
+        # 所有重试都失败
+        self._handle_processing_error(
+            row_index, row_number, last_error or Exception("未知错误"), result_columns, output_path, excel_processor
+        )
+        return "error"
 
     def _handle_validation_errors(
         self,
@@ -439,20 +825,24 @@ class SemanticTestApp:
         excel_processor.save_intermediate_results(output_path, row_number)
 
     def _call_semantic_api(self, row_data: dict, doc_content: str) -> tuple[str, str]:
-        """
-        调用语义比对API
-
-        Returns:
-            tuple[str, str]: (结果, 原因)
-        """
+        """调用语义比对API"""
+        # 获取流式输出和思维链配置
+        enable_stream = getattr(self, "enable_stream", False)
+        enable_thinking = getattr(self, "enable_thinking", True)
+        
         # 优先使用新的供应商管理器，保持向后兼容
         if self.provider_manager:
             return self.provider_manager.check_semantic_similarity(
                 question=row_data["question"],
                 ai_answer=row_data["ai_answer"],
                 source_document=doc_content,
+                stream=enable_stream,  # 传递流式输出配置
+                show_thinking=enable_thinking,  # 默认开启思维链（由环境变量控制）
             )
         elif self.api_handler:
+            # 延迟导入
+            from semantic_tester.api import check_semantic_similarity  # noqa: F811
+
             return check_semantic_similarity(
                 gemini_api_handler=self.api_handler,
                 question=row_data["question"],
@@ -486,18 +876,31 @@ class SemanticTestApp:
         excel_processor.save_intermediate_results(output_path, row_number)
 
     def _read_document_content(
-        self, knowledge_base_dir: str, doc_name: str
+        self, knowledge_base_dir: str, doc_name: str, use_full_doc_match: bool = False
     ) -> Optional[str]:
         """
         读取文档内容
 
         Args:
             knowledge_base_dir: 知识库目录
-            doc_name: 文档名称
+            doc_name: 文档名称，如果为空则读取整个文件夹的所有文档
+            use_full_doc_match: 是否强制使用全量文档匹配
 
         Returns:
             Optional[str]: 文档内容，读取失败返回 None
         """
+        # 延迟导入
+        from semantic_tester.utils import FileUtils  # noqa: F811
+
+        # 如果启用全量文档匹配，直接读取整个文件夹
+        if use_full_doc_match:
+            return self._read_all_documents_in_folder(knowledge_base_dir)
+
+        # 如果文档名称为空，读取整个文件夹的所有文档
+        if not doc_name or doc_name.strip() == "":
+            logger.info("文档名称为空，将读取整个知识库文件夹的所有文档")
+            return self._read_all_documents_in_folder(knowledge_base_dir)
+
         # 确保文档名称有 .md 扩展名
         if not doc_name.lower().endswith(".md"):
             doc_name += ".md"
@@ -507,8 +910,8 @@ class SemanticTestApp:
             knowledge_base_dir, doc_name, recursive=False
         )
         if not doc_path:
-            logger.warning(f"未找到文档: {doc_name}")
-            return None
+            logger.warning(f"未找到文档: {doc_name}，尝试读取整个知识库...")
+            return self._read_all_documents_in_folder(knowledge_base_dir)
 
         # 读取文档内容
         content = FileUtils.read_file_content(doc_path)
@@ -519,19 +922,55 @@ class SemanticTestApp:
         logger.debug(f"成功读取文档: {doc_name} ({len(content)} 字符)")
         return content
 
-    def run_menu_mode(self):
-        """运行菜单模式"""
-        from semantic_tester.ui.menu import MenuHandler
+    def _read_all_documents_in_folder(self, knowledge_base_dir: str) -> Optional[str]:
+        """
+        读取知识库文件夹中的所有文档内容
 
-        # 显示启动信息，强调Dify Chat Tester集成
-        self._show_startup_info()
+        Args:
+            knowledge_base_dir: 知识库目录
 
-        menu_handler = MenuHandler()
+        Returns:
+            Optional[str]: 合并后的所有文档内容，读取失败返回 None
+        """
+        # 延迟导入
+        from semantic_tester.utils import FileUtils  # noqa: F811
 
-        def _show_startup_info(self):
+        # 查找所有 Markdown 文件
+        markdown_files = FileUtils.find_markdown_files(
+            knowledge_base_dir, recursive=True
+        )
+
+        if not markdown_files:
+            logger.warning(f"知识库目录中没有找到任何文档: {knowledge_base_dir}")
+            return None
+
+        logger.info(f"在知识库中找到 {len(markdown_files)} 个文档，开始读取...")
+
+        # 读取并合并所有文档内容
+        all_content = []
+        for file_path in markdown_files:
+            content = FileUtils.read_file_content(file_path)
+            if content:
+                # 添加文档分隔符，标明文档来源
+                file_name = os.path.basename(file_path)
+                all_content.append(f"# 文档: {file_name}\n\n{content}")
+
+        if not all_content:
+            logger.error("无法读取任何文档内容")
+            return None
+
+        # 合并所有文档内容
+        combined_content = "\n\n" + "=" * 80 + "\n\n".join(all_content)
+        logger.info(
+            f"成功读取并合并 {len(all_content)} 个文档，总字符数: {len(combined_content)}"
+        )
+
+        return combined_content
+
+    def _show_startup_info(self):
         """显示启动信息，强调Dify Chat Tester集成"""
         from colorama import Fore, Style
-        
+
         print(f"\n{Fore.CYAN}🚀 AI客服问答语义比对工具{Style.RESET_ALL}")
         print(f"{Fore.GREEN}🔗 完美集成 Dify Chat Tester{Style.RESET_ALL}")
         print()
@@ -651,7 +1090,7 @@ class SemanticTestApp:
                 status_text = "已配置但无效"
             elif status_text == "未配置":
                 status_text = "未配置API密钥"
-                
+
             print(f"   状态: {status_text}")
             print(f"   说明: {result['message']}")
 
@@ -841,7 +1280,7 @@ class SemanticTestApp:
             print(f"可用模型数: {len(provider_info.get('models', []))}")
 
             # 显示模型列表
-            models = provider_info.get('models', [])
+            models = provider_info.get("models", [])
             if models:
                 print(f"模型列表: {', '.join(models[:5])}")
                 if len(models) > 5:
@@ -888,32 +1327,56 @@ AI客服问答语义比对工具 - 使用说明
 """
 
 
+def _display_completion_message():
+    """显示完成信息"""
+    from semantic_tester.ui.terminal_ui import print_summary_panel
+    # 这里我们没有具体的统计数据，所以只显示完成提示
+    # 或者我们可以修改 print_summary_panel 使其更通用
+    # 暂时保持简单的美化输出
+    print(f"\n{Fore.GREEN}=" * 60 + Style.RESET_ALL)
+    print(f"{Fore.GREEN}✅ 所有处理已完成！{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}=" * 60 + Style.RESET_ALL)
+
+
 def main():
-    """主函数"""
+    """主程序入口"""
+    # 延迟导入以避免循环依赖
+    from semantic_tester.ui.terminal_ui import print_welcome
+    
+    # 显示程序标头
+    print_welcome()
+    
     try:
         # 创建并初始化应用实例
         app = _create_and_initialize_app()
         if not app:
             sys.exit(1)
 
-        # 检查命令行参数
-        if len(sys.argv) > 1:
-            # 处理命令行参数
-            if _handle_help_argument():
-                sys.exit(0)
+        # 检测是否为打包后的程序
+        is_frozen = getattr(sys, "frozen", False)
 
-            # 命令行模式处理
-            _run_command_line_mode(app)
+        if is_frozen:
+            # 打包后的程序 - 始终进入交互模式
+            app.run_interactive_mode()
         else:
-            # 交互式菜单模式
-            app.run_menu_mode()
+            # 开发环境 - 支持命令行参数
+            if len(sys.argv) > 1:
+                # 处理命令行参数
+                if _handle_help_argument():
+                    sys.exit(0)
+
+                # 命令行模式处理
+                _run_command_line_mode(app)
+            else:
+                # 交互式菜单模式
+                app.run_interactive_mode()
 
     except KeyboardInterrupt:
-        print("\n\n程序被用户中断")
+        print(f"\n\n{Fore.YELLOW}⚠️  用户取消操作，程序退出{Style.RESET_ALL}")
         sys.exit(0)
     except Exception as e:
-        logger.error(f"程序运行时发生未捕获的异常: {e}", exc_info=True)
-        print(f"程序运行出错: {e}")
+        logger.exception(f"程序运行时发生未捕获的异常: {e}")
+        print(f"\n{Fore.RED}❌ 程序运行出错: {e}{Style.RESET_ALL}")
         sys.exit(1)
 
 
@@ -924,10 +1387,45 @@ def _create_and_initialize_app() -> Optional[SemanticTestApp]:
     Returns:
         SemanticTestApp or None: 初始化成功返回应用实例，失败返回None
     """
-    app = SemanticTestApp()
-    if not app.initialize():
-        return None
-    return app
+    import threading
+    import time
+
+    # 首先显示标题和应用信息（在加载动画之前）
+    LoggerUtils.print_startup_banner()
+
+    # 显示加载动画
+    loading = True
+    spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def show_loading():
+        """显示加载动画"""
+        idx = 0
+        while loading:
+            print(
+                f"\r{Fore.CYAN}{spinner_chars[idx % len(spinner_chars)]} 正在启动程序，请稍候...{Style.RESET_ALL}",
+                end="",
+                flush=True,
+            )
+            idx += 1
+            time.sleep(0.1)
+
+    # 启动加载动画线程
+    loading_thread = threading.Thread(target=show_loading, daemon=True)
+    loading_thread.start()
+
+    try:
+        # 创建并初始化应用
+        app = SemanticTestApp()
+        if not app.initialize():
+            return None
+
+        return app
+    finally:
+        # 停止加载动画
+        loading = False
+        loading_thread.join(timeout=1.0)
+        # 清除加载行 - 确保完全清除
+        print("\r" + " " * 80 + "\r", end="", flush=True)
 
 
 def _handle_help_argument() -> bool:
@@ -950,6 +1448,9 @@ def _run_command_line_mode(app: SemanticTestApp):
     Args:
         app: 应用实例
     """
+    # 延迟导入
+    from semantic_tester.ui import CLIInterface  # noqa: F811
+
     if len(sys.argv) < 2:
         return
 
@@ -987,6 +1488,11 @@ def _run_command_line_mode(app: SemanticTestApp):
     # 显示处理信息
     _display_processing_info(excel_path, knowledge_base_dir, output_path)
 
+    # 获取全量文档匹配配置
+    use_full_doc_match = app.env_manager.get_use_full_doc_match()
+    if use_full_doc_match:
+        print(f"{Fore.GREEN}✅ 已启用全量文档匹配模式{Style.RESET_ALL}")
+
     # 开始处理
     app.process_data(
         knowledge_base_dir=knowledge_base_dir,
@@ -994,6 +1500,7 @@ def _run_command_line_mode(app: SemanticTestApp):
         result_columns=result_columns,
         output_path=output_path,
         show_comparison_result=False,
+        use_full_doc_match=use_full_doc_match,
     )
 
     # 显示完成信息
@@ -1007,10 +1514,10 @@ def _validate_and_load_excel(app: SemanticTestApp, excel_path: str) -> bool:
     Returns:
         bool: 成功返回True
     """
-    """
-    Returns:
-        bool: 成功返回True
-    """
+    # 延迟导入
+    from semantic_tester.utils import ValidationUtils  # noqa: F811
+    from semantic_tester.excel import ExcelProcessor  # noqa: F811
+
     if not ValidationUtils.is_valid_file_path(excel_path, [".xlsx", ".xls"]):
         print(f"错误: 无效的 Excel 文件路径: {excel_path}")
         return False

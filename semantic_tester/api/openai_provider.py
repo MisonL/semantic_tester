@@ -21,16 +21,19 @@ try:
     from colorama import Fore, Style  # type: ignore
 except ImportError:
     # 如果 colorama 不可用，定义空的颜色和样式
-    class Fore:
+    class Fore:  # type: ignore[no-redef]
         GREEN = ""
         RED = ""
 
-    class Style:
+    class Style:  # type: ignore[no-redef]
         BRIGHT = ""
         RESET_ALL = ""
 
 
 from .base_provider import AIProvider
+
+
+from .prompts import SEMANTIC_CHECK_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +71,12 @@ class OpenAIProvider(AIProvider):
         return [
             "gpt-4o",
             "gpt-4o-mini",
+            "o1",  # 推理模型，支持思维链
+            "o1-mini",  # 轻量推理模型
+            "o1-preview",  # 推理预览模型
             "gpt-4-turbo",
             "gpt-3.5-turbo",
             "gpt-4",
-            # 可以添加更多模型
         ]
 
     def validate_api_key(self, api_key: str) -> bool:
@@ -107,6 +112,8 @@ class OpenAIProvider(AIProvider):
         ai_answer: str,
         source_document: str,
         model: Optional[str] = None,
+        stream: bool = False,
+        show_thinking: bool = False,
     ) -> tuple[str, str]:
         """
         执行语义相似度检查
@@ -116,6 +123,8 @@ class OpenAIProvider(AIProvider):
             ai_answer: AI回答内容
             source_document: 源文档内容
             model: 使用的模型（可选）
+            stream: 是否使用流式输出
+            show_thinking: 是否显示推理过程（仅o1系列模型有效）
 
         Returns:
             tuple[str, str]: (结果, 原因)，结果为"是"/"否"/"错误"
@@ -137,11 +146,21 @@ class OpenAIProvider(AIProvider):
                 target=self.show_waiting_indicator, args=(stop_event,)
             )
             waiting_thread.daemon = True
-            waiting_thread.start()
+
+            # 只有在非流式模式才显示等待指示器
+            if not stream:
+                waiting_thread.start()
 
             try:
                 result, reason = self._call_openai_api(
-                    model_to_use, prompt, attempt, max_retries, default_retry_delay
+                    model_to_use,
+                    prompt,
+                    attempt,
+                    max_retries,
+                    default_retry_delay,
+                    stream,
+                    show_thinking,
+                    stop_event,
                 )
                 if result != "RETRY":
                     return result, reason
@@ -161,13 +180,16 @@ class OpenAIProvider(AIProvider):
 
         return "错误", "API 调用多次重试失败"
 
-    def _call_openai_api(
+    def _call_openai_api(  # noqa: C901
         self,
         model_to_use: str,
         prompt: str,
         attempt: int,
         max_retries: int,
         default_retry_delay: int,
+        stream: bool = False,
+        show_thinking: bool = False,
+        stop_event: Optional[threading.Event] = None,
     ) -> tuple[str, str]:
         """
         调用 OpenAI API 并处理响应
@@ -175,6 +197,8 @@ class OpenAIProvider(AIProvider):
         Returns:
             tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
         """
+        import sys
+
         logger.info(
             f"正在调用 OpenAI API 进行语义比对 (尝试 {attempt + 1}/{max_retries})..."
         )
@@ -188,22 +212,108 @@ class OpenAIProvider(AIProvider):
             else:
                 return "错误", "无可用 OpenAI 模型"
 
+        # 检查是否是推理模型（o1系列）
+        is_reasoning_model = model_to_use.startswith("o1")
+
         try:
-            response = client.chat.completions.create(
-                model=model_to_use,
-                messages=[
+            if stream and not is_reasoning_model:
+                # 流式调用（o1系列不支持流式）
+                response = client.chat.completions.create(
+                    model=model_to_use,
+                    messages=[
+                        {"role": "system", "content": "你是一个专业的语义分析助手。"},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0,
+                    max_tokens=1000,
+                    stream=True,
+                )
+
+                # 停止等待指示器
+                if stop_event:
+                    stop_event.set()
+
+                full_response = ""
+                first_char_printed = False
+
+                logger.info("开始接收流式响应...")
+
+                for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+
+                        if not first_char_printed:
+                            sys.stdout.write(f"\r{' ' * 50}\r")
+                            sys.stdout.write("OpenAI: ")
+                            sys.stdout.flush()
+                            first_char_printed = True
+
+                        print(content, end="", flush=True)
+                        full_response += content
+
+                if first_char_printed:
+                    print()
+
+                response_text = full_response.strip()
+            else:
+                # 非流式调用或推理模型
+                messages = [
                     {"role": "system", "content": "你是一个专业的语义分析助手。"},
                     {"role": "user", "content": prompt},
-                ],
-                temperature=0,
-                max_tokens=1000,
-            )
+                ]
 
-            if not response.choices or not response.choices[0].message.content:
-                logger.warning("OpenAI API 返回空响应")
-                return "错误", "API 返回空响应"
+                # o1系列模型不支持system消息和temperature
+                if is_reasoning_model:
+                    messages = [{"role": "user", "content": prompt}]
+                    response = client.chat.completions.create(
+                        model=model_to_use,
+                        messages=messages,
+                        max_completion_tokens=1000,
+                    )
+                else:
+                    response = client.chat.completions.create(
+                        model=model_to_use,
+                        messages=messages,
+                        temperature=0,
+                        max_tokens=1000,
+                    )
 
-            response_text = response.choices[0].message.content.strip()
+                if not response.choices or not response.choices[0].message.content:
+                    logger.warning("OpenAI API 返回空响应")
+                    return "错误", "API 返回空响应"
+
+                # 提取推理过程（仅o1系列）
+                if is_reasoning_model and show_thinking:
+                    try:
+                        # o1 系列模型会在 completion_tokens_details 中包含 reasoning_tokens
+                        choice = response.choices[0]
+                        if (
+                            hasattr(choice.message, "reasoning_content")
+                            and choice.message.reasoning_content
+                        ):
+                            from rich.panel import Panel
+                            from rich.markdown import Markdown
+                            from rich import print as rprint
+                            
+                            rprint(Panel(
+                                Markdown(choice.message.reasoning_content),
+                                title="[bold blue]💭 推理过程[/bold blue]",
+                                border_style="bright_cyan",
+                                expand=False
+                            ))
+                        elif hasattr(response, "usage"):
+                            usage = response.usage
+                            if hasattr(usage, "completion_tokens_details"):
+                                details = usage.completion_tokens_details
+                                if hasattr(details, "reasoning_tokens") and details.reasoning_tokens > 0:
+                                    logger.info(
+                                        f"\n💭 推理tokens数: {details.reasoning_tokens}\n"
+                                    )
+                    except Exception as e:
+                        logger.debug(f"提取推理内容失败: {e}")
+
+                response_text = response.choices[0].message.content.strip()
+
             return self._parse_response(response_text)
 
         except openai.AuthenticationError as e:
@@ -213,9 +323,7 @@ class OpenAIProvider(AIProvider):
         except openai.RateLimitError as e:
             logger.warning(f"OpenAI API 速率限制: {e}")
             if attempt < max_retries - 1:
-                retry_after = (
-                    self._extract_retry_delay(str(e)) or default_retry_delay
-                )
+                retry_after = self._extract_retry_delay(str(e)) or default_retry_delay
                 logger.info(f"等待 {retry_after} 秒后重试")
                 time.sleep(retry_after)
                 return "RETRY", ""
@@ -243,13 +351,9 @@ class OpenAIProvider(AIProvider):
         # 尝试解析 JSON 响应
         try:
             # 如果响应包含代码块，提取其中的 JSON
-            if response_text.startswith("```json") and response_text.endswith(
-                "```"
-            ):
+            if response_text.startswith("```json") and response_text.endswith("```"):
                 response_text = response_text[7:-3].strip()
-            elif response_text.startswith("```") and response_text.endswith(
-                "```"
-            ):
+            elif response_text.startswith("```") and response_text.endswith("```"):
                 response_text = response_text[3:-3].strip()
 
             parsed_response = json.loads(response_text)
@@ -295,46 +399,24 @@ class OpenAIProvider(AIProvider):
         self, question: str, ai_answer: str, source_document_content: str
     ) -> str:
         """生成语义比对提示词"""
-        return f"""请判断以下AI客服回答与源知识库文档内容在语义上是否相符。
-
-判断标准：
-- 如果AI客服回答的内容能够从源知识库文档中推断出来，或者与源文档的核心信息一致，则认为"相符"
-- 如果AI客服回答的内容与源文档相悖，或者包含源文档中没有的信息且无法合理推断，则认为"不相符"
-
-请严格按照以下JSON格式返回结果：
-{{
-    "result": "是" 或 "否",
-    "reason": "详细的判断依据，说明为什么是相符或不相符"
-}}
-
-问题点：{question}
-
-AI客服回答：{ai_answer}
-
-源知识库文档内容：
----
-{source_document_content}
----
-
-请直接返回JSON格式结果，不要包含其他内容。"""
+        return SEMANTIC_CHECK_PROMPT.format(
+            question=question,
+            ai_answer=ai_answer,
+            source_document=source_document_content,
+        )
 
     def _initialize_api_keys(self):
-        """测试并初始化可用的 API 密钥列表"""
-        logger.info("开始测试 OpenAI API Key 的有效性...")
-        valid_keys = []
-        current_time = time.time()
-
-        for key in self.api_keys:
-            if self.validate_api_key(key):
-                valid_keys.append(key)
-                self.key_last_used_time[key] = current_time
-                self.key_cooldown_until[key] = 0.0
-
-        self.api_keys = valid_keys
+        """初始化 API 密钥列表（启动时跳过验证）"""
         if not self.api_keys:
-            logger.warning("所有提供的 OpenAI API Key 均无效或未设置")
-        else:
-            logger.info(f"成功识别 {len(self.api_keys)} 个有效 OpenAI API Key")
+            logger.debug("OpenAI API 密钥未配置")
+            return
+
+        current_time = time.time()
+        for key in self.api_keys:
+            self.key_last_used_time[key] = current_time
+            self.key_cooldown_until[key] = 0.0
+
+        logger.debug(f"已初始化 {len(self.api_keys)} 个 OpenAI API 密钥")
 
     def _configure_client(self):
         """配置 OpenAI 客户端"""
@@ -347,7 +429,9 @@ AI客服回答：{ai_answer}
             self.client = OpenAI(
                 api_key=current_api_key, base_url=self.base_url, timeout=60
             )
-            logger.info(f"OpenAI API 已配置，使用密钥索引: {self.current_key_index}")
+            logger.debug(
+                f"OpenAI API 客户端已配置，使用密钥索引: {self.current_key_index}"
+            )
             self.key_last_used_time[current_api_key] = time.time()
         except Exception as e:
             logger.error(f"OpenAI API 配置失败: {e}")
@@ -366,6 +450,10 @@ AI客服回答：{ai_answer}
     def _rotate_key(self, force_rotate: bool = False):
         """轮转到下一个 API 密钥"""
         if not self.api_keys:
+            return
+
+        # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+        if not self.auto_rotate and not force_rotate:
             return
 
         current_time = time.time()

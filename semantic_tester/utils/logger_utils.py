@@ -14,24 +14,65 @@ class LoggerUtils:
     """日志工具类"""
 
     @staticmethod
+    def _get_log_directory(log_dir: str) -> str:
+        """
+        获取日志目录路径，优先使用程序所在目录，否则使用用户主目录
+        
+        Args:
+            log_dir: 日志目录名称
+            
+        Returns:
+            str: 日志目录的绝对路径
+        """
+        # 尝试获取程序所在目录
+        if getattr(sys, 'frozen', False):
+            # 打包后的程序
+            app_dir = os.path.dirname(sys.executable)
+        else:
+            # 开发环境
+            app_dir = os.getcwd()
+        
+        # 首选：程序所在目录的logs文件夹
+        preferred_log_dir = os.path.join(app_dir, log_dir)
+        
+        # 测试是否有写入权限
+        try:
+            os.makedirs(preferred_log_dir, exist_ok=True)
+            # 尝试写入测试文件
+            test_file = os.path.join(preferred_log_dir, '.write_test')
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+            return preferred_log_dir
+        except (OSError, PermissionError):
+            # 如果没有写入权限，使用用户主目录
+            home_dir = os.path.expanduser('~')
+            fallback_log_dir = os.path.join(home_dir, '.semantic_tester', log_dir)
+            os.makedirs(fallback_log_dir, exist_ok=True)
+            return fallback_log_dir
+
+    @staticmethod
     def setup_logging(
         log_level: str = "INFO",
         log_dir: str = "logs",
         log_file: str = "semantic_test.log",
         quiet_console: bool = True,
+        max_bytes: int = 10 * 1024 * 1024,  # 10MB
+        backup_count: int = 5,  # 保留5个备份文件
     ):
         """
         设置日志配置
 
         Args:
             log_level: 日志级别
-            log_dir: 日志目录
+            log_dir: 日志目录名称（相对路径）
             log_file: 日志文件名
             quiet_console: 是否静默控制台输出（只显示重要信息）
+            max_bytes: 单个日志文件最大字节数（默认10MB）
+            backup_count: 保留的备份文件数量（默认5个）
         """
-        # 确保日志目录存在
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        # 获取日志目录（智能选择）
+        actual_log_dir = LoggerUtils._get_log_directory(log_dir)
 
         # 配置日志格式
         # 文件使用详细格式，控制台使用简洁格式
@@ -49,9 +90,15 @@ class LoggerUtils:
         level = getattr(logging, log_level.upper(), logging.INFO)
         root_logger.setLevel(level)
 
-        # 文件处理器 - 详细日志
-        file_handler = logging.FileHandler(
-            os.path.join(log_dir, log_file), encoding="utf-8"
+        # 文件处理器 - 使用RotatingFileHandler实现日志轮转
+        from logging.handlers import RotatingFileHandler
+        
+        log_file_path = os.path.join(actual_log_dir, log_file)
+        file_handler = RotatingFileHandler(
+            log_file_path,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8"
         )
         file_handler.setFormatter(file_formatter)
         file_handler.setLevel(level)
@@ -71,18 +118,8 @@ class LoggerUtils:
             console_handler.setLevel(level)
             root_logger.addHandler(console_handler)
 
-        # 只在文件中记录初始化信息，控制台不显示
-        file_handler.emit(
-            logging.LogRecord(
-                name="root",
-                level=logging.INFO,
-                pathname="",
-                lineno=0,
-                msg=f"日志系统已初始化，级别: {log_level}",
-                args=(),
-                exc_info=None,
-            )
-        )
+        # 记录日志系统初始化信息
+        logging.info(f"日志系统已初始化：目录={actual_log_dir}, 级别={log_level}, 最大={max_bytes/1024/1024:.1f}MB, 备份={backup_count}")
 
     @staticmethod
     def get_logger(name: str) -> logging.Logger:
@@ -189,9 +226,54 @@ class LoggerUtils:
 
     @staticmethod
     def print_startup_banner():
-        """打印启动横幅"""
-        LoggerUtils.console_print("🚀 AI客服问答语义比对工具", "SUCCESS")
-        print()
+        """打印启动信息（标题和应用信息合并显示）"""
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.text import Text
+        from rich import box
+        from semantic_tester import __version__, __author__, __email__, __license__
+        
+        console = Console()
+        
+        # 创建信息文本
+        info_text = Text()
+        # info_text.append("\n")  # 移除空行分隔
+        info_text.append("版本: ", style="bold yellow")
+        info_text.append(f"{__version__}\n", style="bright_cyan")
+        info_text.append("作者: ", style="bold yellow")
+        info_text.append(f"{__author__}\n", style="white")
+        info_text.append("许可证: ", style="bold yellow")
+        info_text.append(f"{__license__}\n", style="white")
+        info_text.append("邮箱: ", style="bold yellow")
+        info_text.append(f"{__email__}\n", style="cyan")
+        info_text.append("项目: ", style="bold yellow")
+        info_text.append("https://github.com/MisonL/semantic_tester\n", style="bright_cyan underline")
+        
+        # 组合内容
+        from rich.console import Group
+        panel_content = Group(
+            info_text
+        )
+        
+        # 创建面板
+        panel = Panel(
+            panel_content,
+            border_style="bright_cyan",
+            box=box.ROUNDED,
+            padding=(0, 1),
+            width=55,
+            expand=False,
+        )
+        
+        console.print()
+        console.print(panel)
+        console.print()
+
+    @staticmethod
+    def print_app_info():
+        """打印应用信息（已废弃，功能合并到 print_startup_banner）"""
+        # 保持方法存在以兼容性，但不做任何事情
+        pass
 
     @staticmethod
     def print_provider_summary(providers_info: dict):

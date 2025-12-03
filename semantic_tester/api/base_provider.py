@@ -30,6 +30,7 @@ class AIProvider(ABC):
         self.waiting_indicators = config.get("waiting_indicators", ["⣾", "⣽", "⣻", "⢿"])
         self.waiting_text = config.get("waiting_text", "正在处理")
         self.waiting_delay = config.get("waiting_delay", 0.1)
+        self.auto_rotate = config.get("auto_rotate", False)
 
     @abstractmethod
     def get_models(self) -> List[str]:
@@ -61,6 +62,8 @@ class AIProvider(ABC):
         ai_answer: str,
         source_document: str,
         model: Optional[str] = None,
+        stream: bool = False,
+        show_thinking: bool = False,
     ) -> tuple[str, str]:
         """
         执行语义相似度检查
@@ -70,6 +73,8 @@ class AIProvider(ABC):
             ai_answer: AI回答内容
             source_document: 源文档内容
             model: 使用的模型（可选）
+            stream: 是否使用流式输出（默认False保持向后兼容）
+            show_thinking: 是否显示思维链过程（默认False）
 
         Returns:
             tuple[str, str]: (结果, 原因)，结果为"是"/"否"/"错误"
@@ -98,18 +103,18 @@ class AIProvider(ABC):
 
     def show_waiting_indicator(self, stop_event: threading.Event):
         """显示等待状态指示器"""
-        indicators = self.waiting_indicators
-        idx = 0
-        while not stop_event.is_set():
-            waiting_text = f"{self.name}: {self.waiting_text} {indicators[idx]}"
-            padding = " " * (50 - len(waiting_text))
-            sys.stdout.write(f"\r{waiting_text}{padding}")
-            sys.stdout.flush()
-            idx = (idx + 1) % len(indicators)
-            time.sleep(self.waiting_delay)
-        # 清除整行
-        sys.stdout.write("\r" + " " * 50 + "\r")
-        sys.stdout.flush()
+        from rich.live import Live
+        from rich.spinner import Spinner
+        from rich.text import Text
+        from rich.panel import Panel
+        from rich import box
+
+        spinner = Spinner("dots", text=Text(f" {self.name}: {self.waiting_text}...", style="cyan"))
+        
+        # 使用 Live 上下文管理器显示加载动画
+        with Live(spinner, refresh_per_second=10, transient=True) as live:
+            while not stop_event.is_set():
+                time.sleep(0.1)
 
     def get_provider_info(self) -> Dict[str, Any]:
         """

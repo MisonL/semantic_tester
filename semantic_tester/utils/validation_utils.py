@@ -352,8 +352,9 @@ class ValidationUtils:
         if not row_data.get("ai_answer", "").strip():
             errors.append("AI回答内容为空")
 
-        doc_name = row_data.get("doc_name", "").strip()
-        if not doc_name:
-            errors.append("文档名称为空")
+        # 文档名称允许为空，为空时会读取整个知识库文件夹
+        # doc_name = row_data.get("doc_name", "").strip()
+        # if not doc_name:
+        #     errors.append("文档名称为空")
 
         return errors

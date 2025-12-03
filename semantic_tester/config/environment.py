@@ -1,8 +1,8 @@
 """
 环境变量管理
 
-处理环境变量的加载和验证，支持 .env 文件配置。
-环境变量优先级高于 .env 文件配置。
+处理环境变量的加载和验证，支持 .env.config 文件配置。
+环境变量优先级高于 .env.config 文件配置。
 """
 
 import logging
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class EnvManager:
-    """环境变量管理器 - 支持环境变量和 .env 文件"""
+    """环境变量管理器 - 支持环境变量和 .env.config 文件"""
 
     def __init__(self):
         """初始化环境变量管理器"""
@@ -34,19 +34,19 @@ class EnvManager:
     def _load_gemini_keys(self) -> List[str]:
         """
         加载 Gemini API 密钥
-        优先从环境变量获取，其次从 .env 文件获取
+        优先从环境变量获取，其次从 .env.config 文件获取
 
         Returns:
             List[str]: API 密钥列表
         """
-        # 优先从环境变量获取
-        gemini_api_keys_str = os.getenv("GEMINI_API_KEY")
+        # 优先从环境变量获取（支持 GEMINI_API_KEY / GEMINI_API_KEYS 两种命名）
+        gemini_api_keys_str = os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEYS")
 
-        # 如果环境变量不存在，尝试从 .env 文件获取
+        # 如果环境变量不存在，尝试从 .env.config 文件获取
         if not gemini_api_keys_str:
-            gemini_api_keys_str = self.env_loader.get_str("GEMINI_API_KEY")
+            gemini_api_keys_str = self.env_loader.get_str("GEMINI_API_KEY") or self.env_loader.get_str("GEMINI_API_KEYS")
             if gemini_api_keys_str:
-                logger.info("从 .env 文件加载 Gemini API 密钥")
+                logger.info("从 .env.config 文件加载 Gemini API 密钥")
 
         if not gemini_api_keys_str:
             logger.warning("未配置 GEMINI_API_KEY")
@@ -74,19 +74,19 @@ class EnvManager:
         return valid_keys
 
     def get_gemini_api_keys(self) -> List[str]:
-        """
-        获取过滤后的 Gemini API 密钥
-        这个方法会过滤掉模板值
+        """获取过滤后的 Gemini API 密钥
 
-        Returns:
-            List[str]: 有效的API密钥列表
+        支持以下环境变量/配置键（按优先级排列）:
+        1. 环境变量 `GEMINI_API_KEY`
+        2. 环境变量 `GEMINI_API_KEYS`（向后兼容别名）
+        3. `.env.config` 中的 `GEMINI_API_KEY` 或 `GEMINI_API_KEYS`
         """
         return self._load_gemini_keys()
 
     def get_gemini_model(self) -> str:
         """
         获取 Gemini 模型名称
-        优先从环境变量获取，其次从 .env 文件获取
+        优先从环境变量获取，其次从 .env.config 文件获取
 
         Returns:
             str: 模型名称
@@ -145,7 +145,7 @@ class EnvManager:
                 "1. 设置环境变量：export GEMINI_API_KEY='您的API密钥1,您的API密钥2'"
             )
             logger.info(
-                "2. 在 .env 文件中配置：GEMINI_API_KEY=您的API密钥1,您的API密钥2"
+                "2. 在 .env.config 文件中配置：GEMINI_API_KEY=您的API密钥1,您的API密钥2"
             )
             logger.info("3. 程序运行时交互式输入")
             return False
@@ -315,6 +315,27 @@ class EnvManager:
             "retry_delay": self.env_loader.get_int("API_RETRY_DELAY", 60),
         }
 
+    def get_use_full_doc_match(self) -> bool:
+        """获取是否使用全量文档匹配"""
+        # 优先从环境变量获取
+        use_full_doc_match = os.getenv("USE_FULL_DOC_MATCH")
+        if use_full_doc_match is not None:
+            return use_full_doc_match.lower() in ("true", "1", "yes", "on")
+        
+        # 从 .env.config 文件获取
+        return self.env_loader.get_bool("USE_FULL_DOC_MATCH", False)
+
+    def get_enable_thinking(self) -> bool:
+        """获取是否默认启用思维链/推理过程显示.
+
+        优先从环境变量 `ENABLE_THINKING` 读取，其次从 `.env.config` 中读取，默认开启。
+        """
+        value = os.getenv("ENABLE_THINKING")
+        if value is not None:
+            return value.lower() in ("true", "1", "yes", "on")
+
+        return self.env_loader.get_bool("ENABLE_THINKING", True)
+
     def print_env_status(self):
         """打印环境变量状态"""
         print("\n=== 环境配置状态 ===")
@@ -412,21 +433,22 @@ class EnvManager:
         if configured_suppliers:
             logger.info(f"✅ 已配置供应商: {', '.join(configured_suppliers)}")
 
+
         if total_template_keys > 0:
-            logger.warning(
-                f"⚠️  待配置: {total_template_keys} 个模板密钥（{total_suppliers} 个供应商）"
+            # 改为 debug 级别，避免启动时刷屏干扰美观
+            logger.debug(
+                f"待配置: {total_template_keys} 个模板密钥（{total_suppliers} 个供应商）"
             )
-            # 只在详细模式下显示详细信息
-            if logger.level <= logging.INFO:
-                for supplier, count in template_counts.items():
-                    if count > 0:
-                        supplier_name = {
-                            "gemini": "Gemini",
-                            "openai": "OpenAI",
-                            "anthropic": "Anthropic",
-                            "dify": "Dify",
-                            "iflow": "iFlow",
-                        }.get(supplier, supplier)
-                        logger.warning(f"    - {supplier_name}: {count} 个模板值")
+            for supplier, count in template_counts.items():
+                if count > 0:
+                    supplier_name = {
+                        "gemini": "Gemini",
+                        "openai": "OpenAI",
+                        "anthropic": "Anthropic",
+                        "dify": "Dify",
+                        "iflow": "iFlow",
+                    }.get(supplier, supplier)
+                    logger.debug(f"    - {supplier_name}: {count} 个模板值")
         elif not configured_suppliers:
-            logger.warning("⚠️  尚未配置任何AI供应商，请配置 .env 文件中的API密钥")
+            # 如果完全没有配置，还是需要提示一下，但用 info 级别
+            logger.info("尚未配置任何AI供应商，请后续在菜单中配置")

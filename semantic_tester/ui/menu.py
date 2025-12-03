@@ -33,7 +33,9 @@ class MenuHandler:
 
         while True:
             try:
-                choice = input(f"{Fore.YELLOW}请输入选项 (1-4): {Style.RESET_ALL}").strip()
+                choice = input(
+                    f"{Fore.YELLOW}请输入选项 (1-4): {Style.RESET_ALL}"
+                ).strip()
                 if choice in ["1", "2", "3", "4"]:
                     return choice
                 print(f"{Fore.RED}❌ 无效选项，请重新选择{Style.RESET_ALL}")
@@ -57,7 +59,9 @@ class MenuHandler:
 
         while True:
             try:
-                choice = input(f"\n{Fore.YELLOW}请选择操作 (1-5): {Style.RESET_ALL}").strip()
+                choice = input(
+                    f"\n{Fore.YELLOW}请选择操作 (1-5): {Style.RESET_ALL}"
+                ).strip()
                 if choice in ["1", "2", "3", "4", "5"]:
                     return choice
                 print(f"{Fore.RED}❌ 无效选择，请输入 1-5{Style.RESET_ALL}")
@@ -81,7 +85,9 @@ class MenuHandler:
 
         while True:
             try:
-                choice = input(f"\n{Fore.YELLOW}请选择查看内容 (1-5): {Style.RESET_ALL}").strip()
+                choice = input(
+                    f"\n{Fore.YELLOW}请选择查看内容 (1-5): {Style.RESET_ALL}"
+                ).strip()
                 if choice in ["1", "2", "3", "4", "5"]:
                     return choice
                 print(f"{Fore.RED}❌ 无效选择，请输入 1-5{Style.RESET_ALL}")
@@ -207,7 +213,9 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
         return MenuHandler._get_user_choice(options, allow_custom, max_choice)
 
     @staticmethod
-    def _get_user_choice(options: List[str], allow_custom: bool, max_choice: int) -> str:
+    def _get_user_choice(
+        options: List[str], allow_custom: bool, max_choice: int
+    ) -> str:
         """获取用户选择"""
         while True:
             try:
@@ -236,7 +244,7 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
             ).strip()
 
             # 处理键盘中断
-            if user_input.lower() in ['q', 'quit', 'exit']:
+            if user_input.lower() in ["q", "quit", "exit"]:
                 return None
 
             return user_input
@@ -246,9 +254,7 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
     @staticmethod
     def _get_custom_input() -> str:
         """获取自定义输入"""
-        custom_input = input(
-            f"{Fore.YELLOW}请输入自定义值: {Style.RESET_ALL}"
-        ).strip()
+        custom_input = input(f"{Fore.YELLOW}请输入自定义值: {Style.RESET_ALL}").strip()
 
         if custom_input:
             return custom_input
@@ -257,27 +263,37 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
             return MenuHandler._get_custom_input()  # 递归调用直到有输入
 
     @staticmethod
-    def confirm_action(message: str) -> bool:
+    def confirm_action(message: str, default: bool = False) -> bool:
         """
         确认操作
 
         Args:
             message: 确认消息
+            default: 默认值，True表示默认为Y，False表示默认为N
 
         Returns:
             bool: 用户确认结果
         """
+        # 根据默认值设置提示符，明确显示默认值
+        if default:
+            prompt_suffix = "(y/N，默认: Y)"
+        else:
+            prompt_suffix = "(y/N，默认: N)"
+        
         while True:
             try:
                 response = (
-                    input(f"\n{Fore.YELLOW}{message} (y/N): {Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}{message} {prompt_suffix}: {Style.RESET_ALL}")
                     .lower()
                     .strip()
                 )
                 if response == "y":
                     return True
-                elif response in ["n", ""]:
+                elif response == "n":
                     return False
+                elif response == "":
+                    # 空输入时返回默认值
+                    return default
                 else:
                     print(f"{Fore.RED}❌ 请输入 y 或 n{Style.RESET_ALL}")
             except (EOFError, KeyboardInterrupt):
@@ -304,7 +320,7 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
                 user_input = input(f"{Fore.YELLOW}{prompt}: {Style.RESET_ALL}").strip()
 
                 # 处理退出命令
-                if user_input.lower() in ['q', 'quit', 'exit']:
+                if user_input.lower() in ["q", "quit", "exit"]:
                     raise KeyboardInterrupt()
 
                 if not user_input:

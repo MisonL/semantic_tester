@@ -5,6 +5,7 @@ Anthropic API 供应商实现
 """
 
 import logging
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,9 @@ except ImportError:
     TextBlock = None
 
 from .base_provider import AIProvider
+
+
+from .prompts import SEMANTIC_CHECK_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +63,8 @@ class AnthropicProvider(AIProvider):
         import os
         from semantic_tester.config.env_loader import get_env_loader
 
-        models_str = (
-            os.getenv("ANTHROPIC_MODELS")
-            or get_env_loader().get_str("ANTHROPIC_MODELS", "")
+        models_str = os.getenv("ANTHROPIC_MODELS") or get_env_loader().get_str(
+            "ANTHROPIC_MODELS", ""
         )
         if models_str:
             return [model.strip() for model in models_str.split(",") if model.strip()]
@@ -69,6 +72,7 @@ class AnthropicProvider(AIProvider):
         # 默认模型列表
         return [
             "claude-sonnet-4-20250514",
+            "claude-3-7-sonnet-20250314",  # 支持Extended Thinking
             "claude-3-5-sonnet-20241022",
             "claude-3-5-haiku-20241022",
             "claude-3-opus-20240229",
@@ -89,7 +93,7 @@ class AnthropicProvider(AIProvider):
 
             client = anthropic.Anthropic(api_key=api_key, timeout=5)
             # 发送简单的测试请求
-            if hasattr(client, 'messages') and hasattr(client.messages, 'create'):
+            if hasattr(client, "messages") and hasattr(client.messages, "create"):
                 client.messages.create(
                     model="claude-3-haiku-20240307",
                     max_tokens=5,
@@ -105,6 +109,8 @@ class AnthropicProvider(AIProvider):
         ai_answer: str,
         source_document: str,
         model: Optional[str] = None,
+        stream: bool = False,
+        show_thinking: bool = False,
     ) -> tuple[str, str]:
         """
         执行语义相似度检查
@@ -114,11 +120,15 @@ class AnthropicProvider(AIProvider):
             ai_answer: AI回答内容
             source_document: 源文档内容
             model: 使用的模型（可选）
+            stream: 是否使用流式输出
+            show_thinking: 是否显示Extended Thinking过程
 
         Returns:
             tuple[str, str]: (结果, 原因)，结果为"是"/"否"/"错误"
         """
-        result = self.analyze_semantic(question, ai_answer, source_document)
+        result = self.analyze_semantic(
+            question, ai_answer, source_document, model, stream, show_thinking
+        )
         if result["success"]:
             is_consistent = "是" if result["is_consistent"] else "否"
             return is_consistent, result["reason"]
@@ -182,7 +192,7 @@ class AnthropicProvider(AIProvider):
             )
 
             # 发送简单的测试请求
-            if hasattr(client, 'messages') and hasattr(client.messages, 'create'):
+            if hasattr(client, "messages") and hasattr(client.messages, "create"):
                 client.messages.create(
                     model=self.default_model,
                     max_tokens=10,
@@ -209,8 +219,14 @@ class AnthropicProvider(AIProvider):
                 "error_type": "api_error",
             }
 
-    def analyze_semantic(
-        self, question: str, answer: str, knowledge: str
+    def analyze_semantic(  # noqa: C901
+        self,
+        question: str,
+        answer: str,
+        knowledge: str,
+        model: Optional[str] = None,
+        stream: bool = False,
+        show_thinking: bool = False,
     ) -> Dict[str, Any]:
         """
         执行语义分析
@@ -219,10 +235,15 @@ class AnthropicProvider(AIProvider):
             question: 用户问题
             answer: AI回答
             knowledge: 知识库文档内容
+            model: 模型名称
+            stream: 是否使用流式输出
+            show_thinking: 是否显示Extended Thinking
 
         Returns:
             Dict[str, Any]: 分析结果
         """
+        import sys
+
         if not self.is_configured():
             return {
                 "success": False,
@@ -249,25 +270,154 @@ class AnthropicProvider(AIProvider):
             # 构建分析提示
             prompt = self._build_analysis_prompt(question, answer, knowledge)
 
-            # 调用 API
-            start_time = time.time()
-            if hasattr(client, 'messages') and hasattr(client.messages, 'create'):
-                response = client.messages.create(
-                    model=self.default_model,
-                    max_tokens=1000,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-            else:
-                raise Exception("客户端未正确初始化")
-            response_time = time.time() - start_time
+            # 使用指定模型或默认模型
+            model_to_use = model or self.default_model
 
-            # 解析响应 - 提取文本内容块
-            text_content = ""
-            if hasattr(response, 'content'):
-                for content_block in response.content:
-                    # 使用类型检查而不是hasattr，避免Pylance类型错误
-                    if TextBlock is not None and isinstance(content_block, TextBlock):
-                        text_content += content_block.text
+            # 检查是否支持Extended Thinking
+            supports_thinking = "claude-3-7" in model_to_use.lower()
+
+            # 创建等待指示器
+            stop_event = threading.Event()
+            waiting_thread = threading.Thread(
+                target=self.show_waiting_indicator, args=(stop_event,)
+            )
+            waiting_thread.daemon = True
+
+            # 只在非流式模式显示等待指示器
+            if not stream:
+                waiting_thread.start()
+
+            try:
+                start_time = time.time()
+
+                if stream:
+                    # 流式调用
+                    if stop_event:
+                        stop_event.set()
+
+                    full_response = ""
+                    thinking_content = ""
+                    first_char_printed = False
+
+                    logger.info("开始接收Anthropic流式响应...")
+
+                    # 准备请求参数
+                    create_kwargs = {
+                        "model": model_to_use,
+                        "max_tokens": 1000,
+                        "messages": [{"role": "user", "content": prompt}],
+                    }
+
+                    # 如果支持且需要显示思维链
+                    if supports_thinking and show_thinking:
+                        create_kwargs["thinking"] = {
+                            "type": "enabled",
+                            "budget_tokens": 2000,
+                        }
+
+                    with client.messages.stream(**create_kwargs) as stream_response:
+                        for text in stream_response.text_stream:
+                            if not first_char_printed:
+                                sys.stdout.write(f"\r{' ' * 50}\r")
+                                sys.stdout.write("Anthropic: ")
+                                sys.stdout.flush()
+                                first_char_printed = True
+
+                            print(text, end="", flush=True)
+                            full_response += text
+
+                    if first_char_printed:
+                        print()
+
+                    # 获取最终消息以提取思维内容
+                    final_message = stream_response.get_final_message()
+
+                    # 提取思维内容
+                    if (
+                        supports_thinking
+                        and show_thinking
+                        and hasattr(final_message, "content")
+                    ):
+                        for block in final_message.content:
+                            if hasattr(block, "type") and block.type == "thinking":
+                                thinking_content = getattr(block, "thinking", "")
+                                if thinking_content:
+                                    from rich.panel import Panel
+                                    from rich.markdown import Markdown
+                                    from rich import print as rprint
+                                    
+                                    rprint(Panel(
+                                        Markdown(thinking_content),
+                                        title="[bold blue]💭 Extended Thinking[/bold blue]",
+                                        border_style="bright_cyan",
+                                        expand=False
+                                    ))
+
+                    response_time = time.time() - start_time
+                    text_content = full_response
+
+                else:
+                    # 非流式调用
+                    if hasattr(client, "messages") and hasattr(
+                        client.messages, "create"
+                    ):
+                        create_kwargs = {
+                            "model": model_to_use,
+                            "max_tokens": 1000,
+                            "messages": [{"role": "user", "content": prompt}],
+                        }
+
+                        # 如果支持且需要显示思维链
+                        if supports_thinking and show_thinking:
+                            create_kwargs["thinking"] = {
+                                "type": "enabled",
+                                "budget_tokens": 2000,
+                            }
+
+                        response = client.messages.create(**create_kwargs)
+                    else:
+                        raise Exception("客户端未正确初始化")
+
+                    response_time = time.time() - start_time
+
+                    # 解析响应 - 提取文本内容块
+                    text_content = ""
+                    thinking_content = ""
+
+                    if hasattr(response, "content"):
+                        for content_block in response.content:
+                            # 提取思维内容
+                            if supports_thinking and show_thinking:
+                                if (
+                                    hasattr(content_block, "type")
+                                    and content_block.type == "thinking"
+                                ):
+                                    thinking_content = getattr(
+                                        content_block, "thinking", ""
+                                    )
+                                    if thinking_content:
+                                        from rich.panel import Panel
+                                        from rich.markdown import Markdown
+                                        from rich import print as rprint
+                                        
+                                        rprint(Panel(
+                                            Markdown(thinking_content),
+                                            title="[bold blue]💭 Extended Thinking[/bold blue]",
+                                            border_style="blue",
+                                            expand=False
+                                        ))
+
+                            # 提取文本内容
+                            if TextBlock is not None and isinstance(
+                                content_block, TextBlock
+                            ):
+                                text_content += content_block.text
+
+            finally:
+                # 停止等待指示器
+                stop_event.set()
+                if waiting_thread.is_alive():
+                    waiting_thread.join(timeout=0.5)
 
             if not text_content:
                 return {
@@ -280,7 +430,7 @@ class AnthropicProvider(AIProvider):
 
             result = self._parse_response(text_content)
             result["response_time"] = response_time
-            result["model"] = self.default_model
+            result["model"] = model_to_use
 
             return result
 
@@ -315,27 +465,11 @@ class AnthropicProvider(AIProvider):
         Returns:
             str: 分析提示
         """
-        return f"""请分析以下AI客服回答是否与源知识库文档内容语义相符。
-
-**用户问题：**
-{question}
-
-**AI客服回答：**
-{answer}
-
-**源知识库文档内容：**
-{knowledge}
-
-**分析要求：**
-1. 判断AI客服回答是否与源文档内容语义相符
-2. 给出判断依据和置信度（0-100%）
-3. 指出回答中与文档不符或缺失的关键信息
-
-**输出格式：**
-判断结果：【是/否】
-置信度：【0-100%】
-判断依据：【详细说明判断理由】
-不符点：【如果有不符，列出具体问题；如果没有，写"无不符点"】"""
+        return SEMANTIC_CHECK_PROMPT.format(
+            question=question,
+            ai_answer=answer,
+            source_document=knowledge,
+        )
 
     def _parse_response(self, response_text: str) -> Dict[str, Any]:
         """
@@ -347,33 +481,50 @@ class AnthropicProvider(AIProvider):
         Returns:
             Dict[str, Any]: 解析结果
         """
+        import json
+
         try:
+            # 尝试解析 JSON
+            clean_text = response_text.strip()
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:]
+            if clean_text.startswith("```"):
+                clean_text = clean_text.strip("`")
+            clean_text = clean_text.strip()
+
+            data = json.loads(clean_text)
+            result = data.get("result", "无法判断")
+            reason = data.get("reason", "无")
+
+            is_consistent = result == "是"
+
+            return {
+                "success": True,
+                "is_consistent": is_consistent,
+                "confidence": 1.0,  # JSON 模式暂不返回置信度
+                "reason": reason,
+                "raw_response": response_text,
+            }
+
+        except json.JSONDecodeError:
+            # JSON 解析失败，尝试回退到文本解析（兼容旧格式或非 JSON 输出）
+            logger.warning("Anthropic 响应非标准 JSON，尝试文本解析")
+
             # 默认值
             is_consistent = False
             confidence = 0.0
             reason = "解析失败"
 
             # 解析判断结果
-            if "判断结果：【是】" in response_text:
+            if "判断结果：【是】" in response_text or '"result": "是"' in response_text:
                 is_consistent = True
-            elif "判断结果：【否】" in response_text:
+            elif (
+                "判断结果：【否】" in response_text or '"result": "否"' in response_text
+            ):
                 is_consistent = False
 
-            # 解析置信度
-            import re
-
-            confidence_match = re.search(r"置信度：【(\d+)%】", response_text)
-            if confidence_match:
-                confidence = float(confidence_match.group(1)) / 100
-
-            # 提取判断依据
-            reason_start = response_text.find("判断依据：")
-            if reason_start != -1:
-                reason_end = response_text.find("不符点：")
-                if reason_end != -1:
-                    reason = response_text[reason_start:reason_end].strip()
-                else:
-                    reason = response_text[reason_start:].strip()
+            # 简单提取原因
+            reason = response_text
 
             return {
                 "success": True,
@@ -382,7 +533,6 @@ class AnthropicProvider(AIProvider):
                 "reason": reason,
                 "raw_response": response_text,
             }
-
         except Exception as e:
             logger.error(f"解析 Anthropic 响应失败: {e}")
             return {
@@ -395,22 +545,17 @@ class AnthropicProvider(AIProvider):
             }
 
     def _initialize_api_keys(self):
-        """测试并初始化可用的 API 密钥列表"""
-        logger.info("开始测试 Anthropic API Key 的有效性...")
-        valid_keys = []
-        current_time = time.time()
-
-        for key in self.api_keys:
-            if self.validate_api_key(key):
-                valid_keys.append(key)
-                self.key_last_used_time[key] = current_time
-                self.key_cooldown_until[key] = 0.0
-
-        self.api_keys = valid_keys
+        """初始化 API 密钥列表（启动时跳过验证）"""
         if not self.api_keys:
-            logger.warning("所有提供的 Anthropic API Key 均无效或未设置")
-        else:
-            logger.info(f"成功识别 {len(self.api_keys)} 个有效 Anthropic API Key")
+            logger.debug("Anthropic API 密钥未配置")
+            return
+
+        current_time = time.time()
+        for key in self.api_keys:
+            self.key_last_used_time[key] = current_time
+            self.key_cooldown_until[key] = 0.0
+
+        logger.debug(f"已初始化 {len(self.api_keys)} 个 Anthropic API 密钥")
 
     def _configure_client(self):
         """配置 Anthropic 客户端"""
@@ -422,12 +567,15 @@ class AnthropicProvider(AIProvider):
             current_api_key = self.api_keys[self.current_key_index]
             try:
                 import anthropic
+
                 self.client = anthropic.Anthropic(
                     api_key=current_api_key,
                     base_url=self.base_url,
                     timeout=self.timeout,
                 )
-                logger.info(f"Anthropic API 已配置，使用密钥索引: {self.current_key_index}")
+                logger.debug(
+                    f"Anthropic API 客户端已配置，使用密钥索引: {self.current_key_index}"
+                )
                 self.key_last_used_time[current_api_key] = time.time()
             except Exception as e:
                 logger.error(f"Anthropic API 配置失败: {e}")
@@ -445,6 +593,10 @@ class AnthropicProvider(AIProvider):
     def _rotate_key(self, force_rotate: bool = False):
         """轮转到下一个 API 密钥"""
         if not self.api_keys:
+            return
+
+        # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+        if not self.auto_rotate and not force_rotate:
             return
 
         current_time = time.time()

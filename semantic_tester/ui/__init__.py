@@ -1,10 +1,9 @@
 """
 用户界面模块
-
-处理用户交互和界面显示。
+提供命令行界面和终端美化功能
 """
 
-from .cli import CLIInterface
-from .menu import MenuHandler
+from semantic_tester.ui.cli import CLIInterface
+from semantic_tester.ui import terminal_ui
 
-__all__ = ["CLIInterface", "MenuHandler"]
+__all__ = ["CLIInterface", "terminal_ui"]

@@ -5,12 +5,14 @@ Dify AI 供应商实现
 """
 
 import logging
+import threading
 import time
 from typing import List, Optional, Dict, Any
 
 import requests
 
 from .base_provider import AIProvider, APIError, AuthenticationError, RateLimitError
+from .prompts import SEMANTIC_CHECK_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ class DifyProvider(AIProvider):
         Args:
             config: Dify 配置字典，包含 api_keys, base_url 等
         """
+        super().__init__(config)
         self.name = config.get("name", "Dify")
         self.id = config.get("id", "dify")
         self.api_keys = config.get("api_keys", [])
@@ -55,16 +58,14 @@ class DifyProvider(AIProvider):
         self.first_actual_call = True
 
         # 确保 base_url 以 /v1 结尾
+        self.base_url = self.base_url.rstrip("/")
         if not self.base_url.endswith("/v1"):
-            if self.base_url.endswith("/"):
-                self.base_url = self.base_url.rstrip("/") + "/v1"
-            else:
-                self.base_url += "/v1"
+            self.base_url += "/v1"
 
         # 初始化可用密钥
         self._initialize_api_keys()
 
-        logger.info(f"Dify 供应商初始化完成: {self.base_url}")
+        logger.debug(f"Dify 供应商初始化完成: {self.base_url}")
 
     def _initialize_api_keys(self):
         """初始化 API 密钥列表"""
@@ -77,7 +78,7 @@ class DifyProvider(AIProvider):
             self.key_last_used_time[key] = current_time
             self.key_cooldown_until[key] = 0.0
 
-        logger.info(f"已初始化 {len(self.api_keys)} 个 Dify API 密钥")
+        logger.debug(f"已初始化 {len(self.api_keys)} 个 Dify API 密钥")
 
     def get_models(self) -> List[str]:
         """获取可用的模型列表"""
@@ -99,8 +100,8 @@ class DifyProvider(AIProvider):
 
         try:
             # 发送一个简单的测试请求
-            # 使用 conversations 端点而不是 chat-messages
-            url = f"{self.base_url}/conversations"
+            # 使用 chat-messages 端点
+            url = f"{self.base_url}/chat-messages"
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -125,19 +126,23 @@ class DifyProvider(AIProvider):
                 logger.warning("Dify API 密钥无效")
                 return False
             else:
-                logger.warning(f"Dify API 密钥验证失败，状态码: {response.status_code}")
+                logger.warning(
+                    f"Dify API 密钥验证失败，状态码: {response.status_code}, URL: {url}"
+                )
                 return False
 
         except Exception as e:
             logger.error(f"Dify API 密钥验证异常: {e}")
             return False
 
-    def check_semantic_similarity(
+    def check_semantic_similarity(  # noqa: C901
         self,
         question: str,
         ai_answer: str,
         source_document: str,
         model: Optional[str] = None,
+        stream: bool = False,
+        show_thinking: bool = False,
     ) -> tuple[str, str]:
         """
         执行语义相似度检查
@@ -147,6 +152,8 @@ class DifyProvider(AIProvider):
             ai_answer: AI回答
             source_document: 源文档内容
             model: 模型名称（Dify不使用此参数）
+            stream: 是否使用流式输出
+            show_thinking: 不支持（Dify不支持思维链）
 
         Returns:
             tuple[str, str]: (结果, 判断依据)
@@ -161,29 +168,102 @@ class DifyProvider(AIProvider):
             question, ai_answer, source_document
         )
 
-        try:
-            # 发送请求到 Dify API
-            response = self._send_dify_request(prompt)
+        max_retries = 3
 
-            # 处理响应
-            return self._process_dify_response(response)
+        for attempt in range(max_retries):
+            # 创建等待指示器
+            stop_event = threading.Event()
+            waiting_thread = threading.Thread(
+                target=self.show_waiting_indicator, args=(stop_event,)
+            )
+            waiting_thread.daemon = True
 
-        except (AuthenticationError, RateLimitError, APIError) as e:
-            raise e
-        except Exception as e:
-            error_msg = f"Dify API 调用异常: {str(e)}"
-            logger.error(error_msg)
-            return "错误", error_msg
+            # 只在非流式模式显示等待指示器
+            if not stream:
+                waiting_thread.start()
 
-    def _send_dify_request(self, prompt: str) -> requests.Response:
+            try:
+                # 发送请求到 Dify API
+                response_data = self._send_dify_request(prompt, stream, stop_event)
+
+                # 停止等待指示器以便显示结果或日志
+                stop_event.set()
+                if waiting_thread.is_alive():
+                    waiting_thread.join(timeout=0.5)
+
+                # 处理响应
+                return self._process_dify_response(response_data)
+
+            except (AuthenticationError, RateLimitError, requests.exceptions.RequestException, APIError) as e:
+                # 停止等待指示器
+                stop_event.set()
+                if waiting_thread.is_alive():
+                    waiting_thread.join(timeout=0.5)
+
+                logger.warning(
+                    f"Dify API 调用失败 (尝试 {attempt + 1}/{max_retries}): {e}"
+                )
+
+                # 如果是最后一次尝试，或者未启用自动轮转且不是网络/API错误，则抛出异常或返回错误
+                # 注意：对于网络错误，即使不轮转也应该重试（可能是临时网络波动）
+                is_network_error = isinstance(e, (requests.exceptions.RequestException, APIError))
+                
+                if attempt == max_retries - 1:
+                    if is_network_error:
+                        return "错误", f"Dify API 调用多次重试失败: {str(e)}"
+                    if not self.auto_rotate:
+                        raise e
+
+                # 对于认证和速率限制错误，尝试轮转密钥
+                if isinstance(e, (AuthenticationError, RateLimitError)):
+                    if self.auto_rotate:
+                        logger.info("尝试轮转 Dify API 密钥...")
+                        self._rotate_key()
+                
+                # 对于网络错误，等待一段时间后重试
+                time.sleep(2)  # 稍作等待
+
+            except Exception as e:
+                # 停止等待指示器
+                stop_event.set()
+                if waiting_thread.is_alive():
+                    waiting_thread.join(timeout=0.5)
+
+                error_msg = f"Dify API 调用异常: {str(e)}"
+                logger.error(error_msg)
+                return "错误", error_msg
+            finally:
+                # 确保指示器停止
+                stop_event.set()
+                if waiting_thread.is_alive():
+                    waiting_thread.join(timeout=0.5)
+
+        return "错误", "Dify API 调用多次重试失败"
+
+    def _rotate_key(self):
+        """轮转 API 密钥"""
+        if not self.api_keys or len(self.api_keys) <= 1:
+            return
+
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        logger.info(f"已切换到 Dify API 密钥索引: {self.current_key_index}")
+
+    def _send_dify_request(  # noqa: C901
+        self,
+        prompt: str,
+        stream: bool = False,
+        stop_event: Optional[threading.Event] = None,
+    ) -> Any:
         """
         发送请求到Dify API
 
         Args:
             prompt: 提示词
+            stream: 是否使用流式输出
+            stop_event: 停止事件（用于停止等待指示器）
 
         Returns:
-            requests.Response: API响应
+            str or requests.Response: 流式返回字符串，非流式返回Response对象
 
         Raises:
             AuthenticationError: 认证失败
@@ -192,8 +272,11 @@ class DifyProvider(AIProvider):
             requests.exceptions.Timeout: 请求超时
             requests.exceptions.ConnectionError: 连接失败
         """
-        # 构建请求 - 使用 conversations 端点
-        url = f"{self.base_url}/conversations"
+        import sys
+        import json
+
+        # 构建请求 - 使用 chat-messages 端点
+        url = f"{self.base_url}/chat-messages"
         # 获取当前API密钥
         current_key = self.api_keys[self.current_key_index] if self.api_keys else ""
 
@@ -205,29 +288,155 @@ class DifyProvider(AIProvider):
         payload = {
             "inputs": {},
             "query": prompt,
-            "response_mode": "blocking",
+            "response_mode": "streaming" if stream else "blocking",
             "user": "semantic_tester",
         }
 
         if self.app_id:
             payload["app_id"] = self.app_id
 
-        logger.debug(f"发送 Dify API 请求，提示词长度: {len(prompt)} 字符")
+        logger.debug(f"发送 Dify API 请求: {url}")
+        logger.debug(f"流式模式: {stream}")
 
         start_time = time.time()
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        end_time = time.time()
 
-        logger.debug(f"Dify API 响应时间: {end_time - start_time:.2f} 秒")
+        try:
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=60,
+                stream=stream,
+                allow_redirects=True,
+            )
 
-        return response
+            # 处理状态码错误
+            if response.status_code != 200:
+                if (
+                    response.status_code == 405
+                    and response.history
+                    and url.startswith("http://")
+                ):
+                    logger.warning(
+                        "检测到 HTTP 重定向导致 405 错误，尝试自动切换到 HTTPS..."
+                    )
+                    https_url = url.replace("http://", "https://", 1)
+                    response = requests.post(
+                        https_url,
+                        headers=headers,
+                        json=payload,
+                        timeout=60,
+                        stream=stream,
+                    )
+                    if response.status_code == 200:
+                        self.base_url = self.base_url.replace("http://", "https://", 1)
+                else:
+                    response.raise_for_status()
 
-    def _process_dify_response(self, response: requests.Response) -> tuple[str, str]:
+            if stream:
+                # 流式处理
+                if stop_event:
+                    stop_event.set()
+
+                full_response = ""
+                first_char_printed = False
+
+                logger.info("开始接收Dify流式响应...")
+
+                for line in response.iter_lines():
+                    if line:
+                        decoded_line = line.decode("utf-8")
+
+                        if decoded_line.startswith("data:"):
+                            try:
+                                data = json.loads(decoded_line[5:])
+                                event = data.get("event")
+
+                                # 处理错误事件
+                                if event == "error":
+                                    error_msg = data.get("message", "未知错误")
+                                    logger.error(f"Dify API 返回错误: {error_msg}")
+                                    raise APIError(error_msg)
+
+                                # 处理消息事件
+                                elif event == "message":
+                                    if "answer" in data:
+                                        answer_chunk = data["answer"]
+
+                                        if not first_char_printed:
+                                            sys.stdout.write(f"\r{' ' * 50}\r")
+                                            sys.stdout.write("Dify: ")
+                                            sys.stdout.flush()
+                                            first_char_printed = True
+
+                                        print(answer_chunk, end="", flush=True)
+                                        full_response += answer_chunk
+
+                                # 消息结束
+                                elif event == "message_end":
+                                    break
+
+                            except json.JSONDecodeError:
+                                continue
+
+                if first_char_printed:
+                    print()
+
+                end_time = time.time()
+                logger.debug(
+                    f"Dify API 流式响应完成，耗时: {end_time - start_time:.2f} 秒"
+                )
+
+                return full_response
+            else:
+                # 非流式处理，直接返回response对象
+                end_time = time.time()
+                logger.debug(f"Dify API 响应时间: {end_time - start_time:.2f} 秒")
+                return response
+
+        except requests.exceptions.RequestException as e:
+            # 如果是连接错误，且是 http，尝试 https
+            if url.startswith("http://") and not isinstance(
+                e, requests.exceptions.SSLError
+            ):
+                logger.warning(f"请求失败: {e}，尝试切换到 HTTPS 重试...")
+                https_url = url.replace("http://", "https://", 1)
+                response = requests.post(
+                    https_url, headers=headers, json=payload, timeout=60, stream=stream
+                )
+                if response.status_code == 200:
+                    self.base_url = self.base_url.replace("http://", "https://", 1)
+
+                    if stream:
+                        # 重新处理流式
+                        full_response = ""
+                        for line in response.iter_lines():
+                            if line:
+                                decoded_line = line.decode("utf-8")
+                                if decoded_line.startswith("data:"):
+                                    try:
+                                        data = json.loads(decoded_line[5:])
+                                        if (
+                                            data.get("event") == "message"
+                                            and "answer" in data
+                                        ):
+                                            full_response += data["answer"]
+                                        elif data.get("event") == "message_end":
+                                            break
+                                    except json.JSONDecodeError:
+                                        continue
+                        return full_response
+                    else:
+                        return response
+            else:
+                raise e
+
+    def _process_dify_response(self, response_data: Any) -> tuple[str, str]:
         """
         处理Dify API响应
 
         Args:
-            response: API响应
+            response_data: 流式模式下是字符串，非流式模式下是Response对象
 
         Returns:
             tuple[str, str]: (结果, 判断依据)
@@ -237,6 +446,21 @@ class DifyProvider(AIProvider):
             RateLimitError: 速率限制
             APIError: API错误
         """
+        # 如果是字符串，说明是流式返回的完整响应
+        if isinstance(response_data, str):
+            answer = response_data
+            if not answer:
+                error_msg = "Dify API 流式返回空回答"
+                logger.warning(error_msg)
+                return "错误", error_msg
+
+            # 解析语义分析结果
+            result, reason = self._parse_semantic_result(answer)
+            logger.info(f"Dify 语义分析完成: {result}")
+            return result, reason
+
+        # 否则是Response对象，按原来的方式处理
+        response = response_data
         status_code = response.status_code
 
         if status_code == 200:
@@ -250,7 +474,14 @@ class DifyProvider(AIProvider):
             logger.warning(error_msg)
             raise RateLimitError(error_msg)
         else:
-            error_msg = f"Dify API 请求失败，状态码: {status_code}, 响应: {response.text}"
+            # 记录更多调试信息
+            logger.error(f"请求 URL: {response.url}")
+            if response.history:
+                logger.error(f"重定向历史: {response.history}")
+
+            error_msg = (
+                f"Dify API 请求失败，状态码: {status_code}, 响应: {response.text}"
+            )
             logger.error(error_msg)
             raise APIError(error_msg)
 
@@ -270,7 +501,14 @@ class DifyProvider(AIProvider):
         # 提取回答内容
         answer = result_data.get("answer", "")
         if not answer:
-            error_msg = "Dify API 返回空回答"
+            # 尝试从其他常见字段获取回答，以防 API 版本差异
+            if "message" in result_data:
+                answer = result_data["message"]
+            elif "data" in result_data and isinstance(result_data["data"], dict):
+                answer = result_data["data"].get("answer", "")
+
+        if not answer:
+            error_msg = f"Dify API 返回空回答。完整响应: {result_data}"
             logger.warning(error_msg)
             return "错误", error_msg
 
@@ -298,29 +536,11 @@ class DifyProvider(AIProvider):
         if len(source_document) > max_doc_length:
             source_document = source_document[:max_doc_length] + "..."
 
-        prompt = f"""请判断以下AI客服回答与源知识库文档内容在语义上是否相符。
-
-用户问题：
-{question}
-
-AI客服回答：
-{ai_answer}
-
-源知识库文档：
-{source_document}
-
-请按照以下格式回答：
-判断结果：是/否
-判断依据：[详细说明判断理由，重点分析AI回答是否准确反映了源文档的内容，是否存在信息偏差或错误]
-
-要求：
-1. 严格基于源文档内容进行判断
-2. 如果AI回答与源文档内容一致或基本一致，回答"是"
-3. 如果AI回答与源文档内容有明显矛盾、偏差或错误信息，回答"否"
-4. 判断依据要具体、准确，引用源文档中的相关内容
-5. 重点考察语义的准确性，而不是文字的完全匹配"""
-
-        return prompt
+        return SEMANTIC_CHECK_PROMPT.format(
+            question=question,
+            ai_answer=ai_answer,
+            source_document=source_document,
+        )
 
     def _parse_semantic_result(self, response: str) -> tuple[str, str]:
         """
@@ -333,7 +553,25 @@ AI客服回答：
             tuple[str, str]: (结果, 判断依据)
         """
         try:
-            # 尝试提取判断结果和判断依据
+            import json
+
+            # 尝试解析 JSON
+            clean_text = response.strip()
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:]
+            if clean_text.startswith("```"):
+                clean_text = clean_text.strip("`")
+            clean_text = clean_text.strip()
+
+            try:
+                data = json.loads(clean_text)
+                result = data.get("result", "无法确定")
+                reason = data.get("reason", "无")
+                return result, reason
+            except json.JSONDecodeError:
+                pass
+
+            # 尝试提取判断结果和判断依据 (旧格式兼容)
             result, reason = self._extract_result_and_reason(response)
 
             # 如果没有找到标准格式，尝试其他解析方式

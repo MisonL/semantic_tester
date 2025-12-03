@@ -39,7 +39,7 @@ class ProviderManager:
 
     def _initialize_providers(self):
         """初始化所有可用的供应商"""
-        logger.info("开始初始化 AI 供应商...")
+        logger.debug("开始初始化 AI 供应商...")
 
         # 获取供应商配置
         ai_providers = self.config.get_ai_providers()
@@ -61,7 +61,7 @@ class ProviderManager:
                 )
                 if provider:
                     self.providers[provider_id] = provider
-                    logger.info(f"成功初始化供应商: {provider_name} ({provider_id})")
+                    logger.debug(f"成功初始化供应商: {provider_name} ({provider_id})")
             except Exception as e:
                 logger.error(f"初始化供应商 {provider_name} ({provider_id}) 失败: {e}")
 
@@ -69,58 +69,43 @@ class ProviderManager:
         self._validate_and_auto_select_provider()
 
     def _validate_and_auto_select_provider(self):
-        """验证所有供应商的API密钥并自动选择第一个有效的"""
+        """快速选择供应商（启动时跳过API验证，仅检查配置）"""
         if not self.providers:
             logger.warning("没有可用的 AI 供应商")
             return
 
-        logger.info("开始验证供应商API密钥...")
-        valid_providers = []
+        logger.info("检查供应商配置状态...")
         configured_providers = []
         unconfigured_providers = []
 
         for provider_id, provider in self.providers.items():
             if not provider.is_configured():
-                logger.info(f"供应商 {provider.name} 未配置")
+                logger.debug(f"供应商 {provider.name} 未配置")
                 unconfigured_providers.append((provider_id, provider))
                 continue
 
             configured_providers.append((provider_id, provider))
+            logger.debug(f"✅ 供应商 {provider.name} 已配置")
 
-            # 验证API密钥
-            is_valid = self._validate_provider_api_key(provider)
-            if is_valid:
-                valid_providers.append((provider_id, provider))
-                logger.info(f"✅ 供应商 {provider.name} API密钥验证通过")
-            else:
-                logger.warning(f"❌ 供应商 {provider.name} API密钥验证失败")
-
-        # 优先选择策略：有效供应商 > 已配置供应商 > 未配置供应商
-        if valid_providers:
-            # 选择第一个API验证通过的供应商
-            first_valid_id, first_valid_provider = valid_providers[0]
-            self.current_provider_id = first_valid_id
-            logger.info(f"自动选择第一个有效供应商: {first_valid_provider.name}")
-
-            # 如果有多个有效供应商，提示用户可以在菜单中切换
-            if len(valid_providers) > 1:
-                logger.info(f"检测到 {len(valid_providers)} 个有效供应商")
-                logger.info("可在主菜单选择'AI供应商管理'->'切换当前供应商'进行切换")
-        elif configured_providers:
-            # 如果没有有效供应商但有已配置的供应商，选择第一个已配置的
+        # 优先选择策略：已配置供应商 > 未配置供应商
+        # 注意：启动时不再进行API验证，验证推迟到实际使用或用户手动触发
+        if configured_providers:
+            # 选择第一个已配置的供应商
             first_configured_id, first_configured_provider = configured_providers[0]
             self.current_provider_id = first_configured_id
-            logger.warning(
-                f"没有API验证通过的供应商，选择第一个已配置供应商: {first_configured_provider.name}"
-            )
+            logger.info(f"自动选择供应商: {first_configured_provider.name}")
+
+            # 如果有多个已配置供应商，提示用户可以在菜单中切换
+            if len(configured_providers) > 1:
+                logger.debug(f"检测到 {len(configured_providers)} 个已配置供应商")
+                logger.debug("可在主菜单选择'AI供应商管理'->'切换当前供应商'进行切换")
         elif unconfigured_providers:
-            # 最后回退到未配置的供应商
+            # 回退到未配置的供应商
             first_unconfigured_id, first_unconfigured_provider = unconfigured_providers[
                 0
             ]
             self.current_provider_id = first_unconfigured_id
-            logger.warning("所有供应商都未配置，选择第一个未配置供应商")
-            logger.info(f"选择供应商: {first_unconfigured_provider.name}")
+            logger.info(f"选择供应商: {first_unconfigured_provider.name}（未配置）")
         else:
             logger.error("无法选择供应商：没有任何可用供应商")
 
@@ -175,7 +160,9 @@ class ProviderManager:
             return api_keys[0] if api_keys else ""
         elif provider_id == "iflow":
             iflow_config = self.config.get_iflow_config()
-            return iflow_config.get("api_key", "")
+            # iFlow 与 Dify 一样使用 api_keys（复数），这里返回第一个用于验证
+            api_keys = iflow_config.get("api_keys", [])
+            return api_keys[0] if api_keys else ""
 
         return None
 
@@ -209,7 +196,9 @@ class ProviderManager:
             logger.warning(f"未知的供应商 ID: {provider_id}")
             return None
 
-    def _create_gemini_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> GeminiProvider:
+    def _create_gemini_provider(
+        self, provider_name: str, batch_config: Dict[str, Any]
+    ) -> GeminiProvider:
         """
         创建 Gemini 供应商实例
         """
@@ -224,11 +213,14 @@ class ProviderManager:
             "id": "gemini",
             "api_keys": gemini_keys,
             "model": gemini_model,
+            "auto_rotate": True,  # Gemini 默认启用轮转
             **batch_config,
         }
         return GeminiProvider(provider_config)
 
-    def _create_openai_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> OpenAIProvider:
+    def _create_openai_provider(
+        self, provider_name: str, batch_config: Dict[str, Any]
+    ) -> OpenAIProvider:
         """
         创建 OpenAI 供应商实例
         """
@@ -239,9 +231,7 @@ class ProviderManager:
         has_config = openai_config.get("has_config", False)
 
         if not has_config:
-            logger.warning(
-                "OpenAI API 密钥未配置或为模板值，将创建未配置的供应商实例"
-            )
+            logger.warning("OpenAI API 密钥未配置或为模板值，将创建未配置的供应商实例")
 
         provider_config = {
             "name": provider_name,
@@ -250,11 +240,14 @@ class ProviderManager:
             "model": model,
             "base_url": base_url,
             "has_config": has_config,
+            "auto_rotate": False,  # OpenAI 默认禁用轮转
             **batch_config,
         }
         return OpenAIProvider(provider_config)
 
-    def _create_anthropic_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> AnthropicProvider:
+    def _create_anthropic_provider(
+        self, provider_name: str, batch_config: Dict[str, Any]
+    ) -> AnthropicProvider:
         """
         创建 Anthropic 供应商实例
         """
@@ -276,11 +269,14 @@ class ProviderManager:
             "model": model,
             "base_url": base_url,
             "has_config": has_config,
+            "auto_rotate": False,  # Anthropic 默认禁用轮转
             **batch_config,
         }
         return AnthropicProvider(provider_config)
 
-    def _create_dify_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> DifyProvider:
+    def _create_dify_provider(
+        self, provider_name: str, batch_config: Dict[str, Any]
+    ) -> DifyProvider:
         """
         创建 Dify 供应商实例
         """
@@ -291,9 +287,7 @@ class ProviderManager:
         has_config = dify_config.get("has_config", len(api_keys) > 0)
 
         if not has_config:
-            logger.warning(
-                "Dify API 密钥未配置或为模板值，将创建未配置的供应商实例"
-            )
+            logger.warning("Dify API 密钥未配置或为模板值，将创建未配置的供应商实例")
 
         provider_config = {
             "name": provider_name,
@@ -302,32 +296,34 @@ class ProviderManager:
             "base_url": base_url,
             "app_id": app_id,
             "has_config": has_config,
+            "auto_rotate": False,  # Dify 默认禁用轮转
             **batch_config,
         }
         return DifyProvider(provider_config)
 
-    def _create_iflow_provider(self, provider_name: str, batch_config: Dict[str, Any]) -> IflowProvider:
+    def _create_iflow_provider(
+        self, provider_name: str, batch_config: Dict[str, Any]
+    ) -> IflowProvider:
         """
         创建 iFlow 供应商实例
         """
         iflow_config = self.config.get_iflow_config()
-        api_key = iflow_config.get("api_key", "")
+        api_keys = iflow_config.get("api_keys", [])
         model = iflow_config.get("model", "qwen3-max")
         base_url = iflow_config.get("base_url", "https://apis.iflow.cn/v1")
         has_config = iflow_config.get("has_config", False)
 
         if not has_config:
-            logger.warning(
-                "iFlow API 密钥未配置或为模板值，将创建未配置的供应商实例"
-            )
+            logger.warning("iFlow API 密钥未配置或为模板值，将创建未配置的供应商实例")
 
         provider_config = {
             "name": provider_name,
             "id": "iflow",
-            "api_key": api_key,
+            "api_keys": api_keys,
             "model": model,
             "base_url": base_url,
             "has_config": has_config,
+            "auto_rotate": False,  # iFlow 默认禁用轮转
             **batch_config,
         }
         return IflowProvider(provider_config)
@@ -418,9 +414,10 @@ class ProviderManager:
         source_document: str,
         provider_id: Optional[str] = None,
         model: Optional[str] = None,
+        stream: bool = False,
+        show_thinking: bool = True,
     ) -> Tuple[str, str]:
-        """
-        使用指定供应商执行语义相似度检查
+        """使用指定供应商执行语义相似度检查
 
         Args:
             question: 问题内容
@@ -428,6 +425,8 @@ class ProviderManager:
             source_document: 源文档内容
             provider_id: 供应商 ID（可选）
             model: 模型名称（可选）
+            stream: 是否启用流式输出（可选）
+            show_thinking: 是否显示思维链/推理过程（仅在模型支持时生效）
 
         Returns:
             Tuple[str, str]: (结果, 原因)
@@ -439,8 +438,38 @@ class ProviderManager:
         if not provider.is_configured():
             return "错误", f"供应商 {provider.name} 未正确配置"
 
+        if stream:
+            from semantic_tester.ui.terminal_ui import console, Icons
+            from rich.text import Text
+            from rich.panel import Panel
+            from rich import box
+            
+            # 创建问题和回答的预览面板
+            content = Text()
+            content.append(f"{Icons.QUESTION} 问题: ", style="bold yellow")
+            question_text = question[:100] + "..." if len(question) > 100 else question
+            content.append(f"{question_text}\n\n", style="white")
+            
+            content.append(f"💬 回答: ", style="bold yellow")
+            answer_text = ai_answer[:200] + "..." if len(ai_answer) > 200 else ai_answer
+            content.append(f"{answer_text}", style="white")
+            
+            panel = Panel(
+                content,
+                title="[bold]📝 评估内容预览[/bold]",
+                border_style="bright_cyan",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
+            console.print(panel)
+
         return provider.check_semantic_similarity(
-            question, ai_answer, source_document, model
+            question,
+            ai_answer,
+            source_document,
+            model,
+            stream=stream,
+            show_thinking=show_thinking,
         )
 
     def has_configured_providers(self) -> bool:

@@ -11,6 +11,23 @@ from typing import List, Optional
 
 from colorama import Fore, Style
 
+# 导入终端UI美化模块
+from semantic_tester.ui import terminal_ui
+from semantic_tester.ui.terminal_ui import (
+    print_success,
+    print_error,
+    print_warning,
+    print_info,
+    print_input_prompt,
+    print_provider_table,
+    print_file_table,
+    print_column_table,
+    print_comparison_result_panel,
+    print_summary_panel,
+    confirm,
+    console,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +56,7 @@ class CLIInterface:
 
         providers = provider_manager.get_available_providers()
         if not providers:
-            print("❌ 没有可用的 AI 供应商")
+            print_error("❌ 没有可用的 AI 供应商")
             return None
 
         # 获取已配置的供应商
@@ -58,24 +75,9 @@ class CLIInterface:
     @staticmethod
     def _show_provider_list(providers: list, configured_providers: list):
         """
-        显示供应商列表
+        显示供应商列表（使用美化的表格）
         """
-        print("\n=== AI 供应商选择 ===")
-        print(
-            f"可用供应商: {len(providers)} 个，已配置: {len(configured_providers)} 个"
-        )
-
-        # 显示供应商列表
-        for i, provider_info in enumerate(providers, 1):
-            # provider_id = provider_info["id"]  # 未使用，暂时注释
-            provider_name = provider_info["name"]
-            is_configured = provider_info["configured"]
-            is_current = provider_info.get("is_current", False)
-
-            status = "✅ 已配置" if is_configured else "❌ 未配置"
-            current_marker = " (当前)" if is_current else ""
-
-            print(f"{i}. {provider_name}{current_marker} - {status}")
+        print_provider_table(providers, configured_providers)
 
     @staticmethod
     def _confirm_unconfigured_selection() -> bool:
@@ -85,9 +87,8 @@ class CLIInterface:
         Returns:
             bool: True 表示继续，False 表示取消
         """
-        print("\n⚠️  警告: 没有已配置的 AI 供应商")
-        proceed = input("是否继续选择未配置的供应商? (y/N): ").strip().lower()
-        return proceed in ["y", "yes"]
+        print_warning("警告: 没有已配置的 AI 供应商")
+        return confirm("是否继续选择未配置的供应商?", default=False)
 
     @staticmethod
     def _get_user_choice(provider_manager, providers: list):
@@ -101,36 +102,42 @@ class CLIInterface:
 
         while True:
             try:
-                choice_input = input(
-                    "\n请选择供应商 (1-{}) 或按回车使用当前供应商: ".format(len(providers))
-                ).strip()
+                choice = print_input_prompt("请输入供应商序号 (0 退出)")
+                if choice == "0":
+                    print_info("用户取消操作")
+                    sys.exit(0)
 
-                # 如果用户按回车，使用当前供应商
-                if not choice_input:
-                    return CLIInterface._use_current_provider(provider_manager)
-
-                choice_index = int(choice_input)
-                if 1 <= choice_index <= len(providers):
-                    selected_provider_id = choices[choice_index - 1]
-                    selected_provider = provider_manager.get_provider(
-                        selected_provider_id
-                    )
-
-                    if not selected_provider.is_configured():
-                        if not CLIInterface._confirm_unconfigured_provider(selected_provider):
+                # 尝试使用索引选择
+                try:
+                    provider_index = int(choice) - 1
+                    if 0 <= provider_index < len(providers):
+                        selected_id = providers[provider_index]["id"]
+                        if provider_manager.set_current_provider(selected_id):
+                            print_success(f"已选择供应商: {providers[provider_index]['name']}")
+                            return selected_id
+                        else:
+                            print_error("切换供应商失败，请重试")
                             continue
+                    else:
+                        print_error(f"无效的序号，请输入 1-{len(providers)}")
+                except ValueError:
+                    # 尝试使用ID选择
+                    if choice in choices:
+                        if provider_manager.set_current_provider(choice):
+                            provider_info = next(
+                                (p for p in providers if p["id"] == choice), None
+                            )
+                            if provider_info:
+                                print_success(f"已选择供应商: {provider_info['name']}")
+                            return choice
+                        else:
+                            print_error("切换供应商失败，请重试")
+                    else:
+                        print_error("无效的输入，请重新输入")
 
-                    # 设置为当前供应商
-                    provider_manager.set_current_provider(selected_provider_id)
-                    print(f"✅ 已选择供应商: {selected_provider.name}")
-                    return selected_provider_id
-                else:
-                    print(f"❌ 无效的选择，请输入 1-{len(providers)} 之间的数字")
-            except ValueError:
-                print("❌ 请输入有效的数字")
             except KeyboardInterrupt:
-                print("\n操作已取消")
-                return None
+                print_warning("\n用户取消操作")
+                sys.exit(0)
 
     @staticmethod
     def _use_current_provider(provider_manager):
@@ -142,10 +149,10 @@ class CLIInterface:
         """
         current_provider = provider_manager.get_current_provider()
         if current_provider:
-            print(f"使用当前供应商: {current_provider.name}")
+            print_success(f"使用当前供应商: {current_provider.name}")
             return provider_manager.current_provider_id
         else:
-            print("❌ 没有当前供应商")
+            print_error("没有当前供应商")
             return None
 
     @staticmethod
@@ -156,11 +163,8 @@ class CLIInterface:
         Returns:
             bool: True 表示确认，False 表示取消
         """
-        print(
-            f"⚠️  供应商 {provider.name} 未配置，可能无法正常使用"
-        )
-        confirm = input("确认选择此供应商? (y/N): ").strip().lower()
-        return confirm in ["y", "yes"]
+        print_warning(f"供应商 {provider.name} 未配置，可能无法正常使用")
+        return confirm("确认选择此供应商?", default=False)
 
     @staticmethod
     def show_provider_status(provider_manager):
@@ -171,7 +175,7 @@ class CLIInterface:
             provider_manager: 供应商管理器实例
         """
         if not provider_manager:
-            print("❌ 供应商管理器未初始化")
+            print_error("供应商管理器未初始化")
             return
 
         provider_manager.print_provider_status()
@@ -184,8 +188,8 @@ class CLIInterface:
         Args:
             env_manager: 环境管理器实例
         """
-        print("\n=== API 密钥配置 ===")
-        print("选择要配置的 AI 供应商:")
+        print_info("=== API 密钥配置 ===")
+        print_info("选择要配置的 AI 供应商:")
 
         choices = ["1. Gemini", "2. OpenAI", "3. Dify", "4. 返回上级菜单"]
 
@@ -194,7 +198,7 @@ class CLIInterface:
 
         while True:
             try:
-                selection = input("请选择 (1-4): ").strip()
+                selection = print_input_prompt("请选择 (1-4)")
 
                 if selection == "1":
                     CLIInterface._configure_gemini_keys(env_manager)
@@ -205,53 +209,53 @@ class CLIInterface:
                 elif selection == "4":
                     break
                 else:
-                    print("❌ 无效选择，请输入 1-4")
+                    print_error("无效选择，请输入 1-4")
             except KeyboardInterrupt:
-                print("\n操作已取消")
+                print_warning("\n操作已取消")
                 break
 
     @staticmethod
     def _configure_gemini_keys(env_manager):
         """配置 Gemini API 密钥"""
-        print("\n--- Gemini API 密钥配置 ---")
+        print_info("--- Gemini API 密钥配置 ---")
         print("获取 API 密钥: https://aistudio.google.com/app/apikey")
 
-        keys_input = input("请输入 Gemini API 密钥 (多个密钥用逗号分隔): ").strip()
+        keys_input = print_input_prompt("请输入 Gemini API 密钥 (多个密钥用逗号分隔)")
         if keys_input:
             # 设置环境变量
             import os
 
             os.environ["GEMINI_API_KEY"] = keys_input
-            print("✅ Gemini API 密钥已设置（当前会话有效）")
-            print("💡 提示: 要永久保存，请在 .env 文件中配置或设置系统环境变量")
+            print_success("Gemini API 密钥已设置（当前会话有效）")
+            print_info("提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量")
 
     @staticmethod
     def _configure_openai_keys(env_manager):
         """配置 OpenAI API 密钥"""
-        print("\n--- OpenAI API 密钥配置 ---")
+        print_info("--- OpenAI API 密钥配置 ---")
         print("获取 API 密钥: https://platform.openai.com/api-keys")
 
-        api_key = input("请输入 OpenAI API 密钥: ").strip()
+        api_key = print_input_prompt("请输入 OpenAI API 密钥")
         if api_key:
             import os
 
             os.environ["OPENAI_API_KEY"] = api_key
-            print("✅ OpenAI API 密钥已设置（当前会话有效）")
-            print("💡 提示: 要永久保存，请在 .env 文件中配置或设置系统环境变量")
+            print_success("OpenAI API 密钥已设置（当前会话有效）")
+            print_info("提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量")
 
     @staticmethod
     def _configure_dify_keys(env_manager):
         """配置 Dify API 密钥"""
-        print("\n--- Dify API 密钥配置 ---")
+        print_info("--- Dify API 密钥配置 ---")
         print("获取 API 密钥: 从 Dify 工作台获取")
 
-        api_key = input("请输入 Dify API 密钥: ").strip()
+        api_key = print_input_prompt("请输入 Dify API 密钥")
         if api_key:
             import os
 
             os.environ["DIFY_API_KEY"] = api_key
-            print("✅ Dify API 密钥已设置（当前会话有效）")
-            print("💡 提示: 要永久保存，请在 .env 文件中配置或设置系统环境变量")
+            print_success("Dify API 密钥已设置（当前会话有效）")
+            print_info("提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量")
 
     @staticmethod
     def get_excel_file() -> str:
@@ -261,9 +265,10 @@ class CLIInterface:
         Returns:
             str: Excel 文件路径
         """
-        excel_files = CLIInterface._get_local_excel_files()
-
         while True:
+            # 每次循环都重新扫描目录，确保文件列表是最新的
+            excel_files = CLIInterface._get_local_excel_files()
+            
             # 获取用户输入的文件路径
             excel_path = CLIInterface._get_user_file_input(excel_files)
             if excel_path is None:
@@ -271,6 +276,7 @@ class CLIInterface:
 
             # 验证文件存在性
             if not CLIInterface._validate_file_exists(excel_path):
+                # 文件不存在，继续循环会重新扫描目录
                 continue
 
             # 验证文件格式
@@ -299,47 +305,33 @@ class CLIInterface:
             str: 文件路径
         """
         if excel_files:
-            CLIInterface._display_excel_files(excel_files)
-            file_input = input("请输入 Excel 文件序号或直接输入文件路径: ")
-            return CLIInterface._parse_file_input(file_input, excel_files)
+            # 使用更明确的标题说明这是问答记录表
+            print_file_table(excel_files, title="问答记录表文件")
+            
+            while True:
+                try:
+                    choice = print_input_prompt(f"请选择问答记录表序号 (1-{len(excel_files)}) 或直接输入文件路径")
+                    
+                    # 尝试解析为序号
+                    try:
+                        index = int(choice) - 1
+                        if 0 <= index < len(excel_files):
+                            selected_file = excel_files[index]
+                            print_success(f"已选择文件: {selected_file}")
+                            return selected_file
+                    except ValueError:
+                        pass
+                        
+                    # 如果不是序号，则作为路径返回
+                    if choice:
+                        return choice
+                        
+                except KeyboardInterrupt:
+                    print_warning("\n操作已取消")
+                    sys.exit(0)
         else:
-            return input(
-                "当前目录下没有找到 Excel 文件。请输入包含问答内容的 Excel 文件路径: "
-            )
-
-    @staticmethod
-    def _display_excel_files(excel_files: list):
-        """
-        显示Excel文件列表
-        """
-        print("\n当前目录下的 Excel 文件:")
-        for i, file_name in enumerate(excel_files):
-            print(f"{i + 1}. {file_name}")
-
-    @staticmethod
-    def _parse_file_input(file_input: str, excel_files: list) -> Optional[str]:
-        """
-        解析用户输入的文件选择
-
-        Args:
-            file_input: 用户输入
-            excel_files: Excel文件列表
-
-        Returns:
-            str: 文件路径
-        """
-        try:
-            file_index = int(file_input)
-            if 1 <= file_index <= len(excel_files):
-                return excel_files[file_index - 1]
-            else:
-                print(
-                    f"错误: 无效的文件序号 '{file_index}'。请重新输入。",
-                    file=sys.stderr,
-                )
-                return None
-        except ValueError:  # 用户输入的是路径
-            return file_input
+            print_warning("当前目录没有找到 Excel 文件")
+            return print_input_prompt("请输入问答记录表文件路径")
 
     @staticmethod
     def _validate_file_exists(excel_path: str) -> bool:
@@ -353,9 +345,7 @@ class CLIInterface:
             bool: 文件存在返回True
         """
         if not os.path.exists(excel_path):
-            print(
-                f"错误: 文件 '{excel_path}' 不存在。请重新输入。", file=sys.stderr
-            )
+            print_error(f"文件不存在: {excel_path}")
             return False
         return True
 
@@ -393,20 +383,27 @@ class CLIInterface:
         Returns:
             str: 知识库目录路径
         """
+        default_path = "./kb-docs/"
+        if os.path.isdir(default_path):
+            print_info(f"检测到默认知识库目录: {default_path}")
+            if CLIInterface.get_confirmation("是否使用此目录?", default=True):
+                return default_path
+
         while True:
-            knowledge_base_dir = input(
-                "请输入知识库文档目录路径 (例如: '处理后/' 或 '/path/to/knowledge_base/'): "
-            )
-            if not knowledge_base_dir:
-                print("错误: 知识库文档目录路径不能为空。", file=sys.stderr)
+            path = print_input_prompt("请输入知识库文档目录路径")
+            if not path:
+                # 如果用户直接回车且默认目录存在，则使用默认目录
+                if os.path.isdir(default_path):
+                    return default_path
+                print_error("知识库目录路径不能为空。")
                 continue
-            if not os.path.isdir(knowledge_base_dir):
-                print(
-                    f"错误: 目录 '{knowledge_base_dir}' 不存在。请重新输入。",
-                    file=sys.stderr,
-                )
+                
+            if os.path.isdir(path):
+                print_success(f"已选择知识库目录: {path}")
+                return path
+            else:
+                print_error(f"目录不存在: {path}")
                 continue
-            return knowledge_base_dir
 
     @staticmethod
     def get_output_path(default_path: str) -> str:
@@ -419,10 +416,20 @@ class CLIInterface:
         Returns:
             str: 输出文件路径
         """
-        return (
-            input(f"请输入结果Excel文件的保存路径 (默认: {default_path}): ")
-            or default_path
-        )
+        default_output_path = default_path
+        print_info(f"默认输出路径: {default_output_path}")
+        if CLIInterface.get_confirmation("是否使用默认输出路径?", default=True):
+            return default_output_path
+
+        while True:
+            path = print_input_prompt("请输入输出文件路径")
+            if path:
+                if not path.endswith(".xlsx"):
+                    path += ".xlsx"
+                print_success(f"已设置输出路径: {path}")
+                return path
+            else:
+                print_error("输出文件路径不能为空。")
 
     @staticmethod
     def ask_show_comparison_result() -> bool:
@@ -433,9 +440,9 @@ class CLIInterface:
             bool: 是否显示比对结果
         """
         display_result_choice = input(
-            "是否在控制台显示每个问题的比对结果？ (y/N，默认: N): "
+            "是否在控制台显示每个问题的比对结果？ (Y/n，默认: Y): "
         ).lower()
-        return display_result_choice == "y"
+        return display_result_choice != "n"
 
     @staticmethod
     def confirm_auto_config() -> bool:
@@ -461,23 +468,25 @@ class CLIInterface:
         Returns:
             str: 选择的响应列名
         """
-        print(f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}")
-        for i, col in enumerate(response_cols):
-            print(f"  {i + 1}. {col}")
-
+        prompt_msg = "响应列"
+        print_info(f"发现多个{prompt_msg}，请选择要使用的一个：")
+        CLIInterface.print_column_table(response_cols)
+        
         while True:
-            choice = input(f"请输入选择 (1-{len(response_cols)}, 默认: 1): ").strip()
-            if not choice:
-                choice = "1"
-
             try:
-                choice_idx = int(choice) - 1
-                if 0 <= choice_idx < len(response_cols):
-                    return response_cols[choice_idx]
+                choice = print_input_prompt(f"请选择 {prompt_msg} (1-{len(response_cols)})")
+                index = int(choice) - 1
+                if 0 <= index < len(response_cols):
+                    selected_col = response_cols[index]
+                    print_success(f"已选择列: {selected_col}")
+                    return selected_col
                 else:
-                    print(f"选择无效，请输入 1-{len(response_cols)} 之间的数字。")
+                    print_error(f"无效的序号，请输入 1-{len(response_cols)}")
             except ValueError:
-                print("请输入有效的数字。")
+                print_error("请输入有效的数字")
+            except KeyboardInterrupt:
+                print_warning("\n操作已取消")
+                sys.exit(0)
 
     @staticmethod
     def print_progress(current: int, total: int):
@@ -488,48 +497,58 @@ class CLIInterface:
             current: 当前进度
             total: 总数
         """
-        logger.info(f"正在处理第 {current}/{total} 条记录...")
+        pending = total - current
+        percentage = (current / total) * 100
+        msg = f"正在处理: {current}/{total} ({percentage:.1f}%) | 待处理: {pending}"
+        logger.info(msg)
+        print(f"{Fore.BLUE}⏳ {msg}{Style.RESET_ALL}")
 
     @staticmethod
     def print_result_summary(total: int, processed: int, skipped: int, errors: int):
         """
         打印结果摘要
-
+        
         Args:
             total: 总记录数
             processed: 成功处理数
             skipped: 跳过数
             errors: 错误数
         """
-        print(f"\n{Fore.GREEN}=== 处理完成 ==={Style.RESET_ALL}")
-        print(f"总记录数: {total}")
-        print(f"成功处理: {processed}")
-        print(f"跳过记录: {skipped}")
-        print(f"错误记录: {errors}")
+        print_summary_panel(total, processed, skipped, errors)
 
     @staticmethod
-    def print_comparison_result(doc_name: str, question: str, result: str, reason: str):
+    def print_detailed_result_summary(
+        total: int,
+        processed: int,
+        skipped: int,
+        errors: int,
+        file_path: str,
+        output_path: str,
+        provider_name: str,
+        model_name: str
+    ):
+        """
+        打印详细结果摘要
+        """
+        from semantic_tester.ui.terminal_ui import print_detailed_summary_panel
+        print_detailed_summary_panel(
+            total, processed, skipped, errors,
+            file_path, output_path, provider_name, model_name
+        )
+
+    @staticmethod
+    def print_comparison_result(doc_name: str, question: str, ai_answer: str, result: str, reason: str):
         """
         打印单个比对结果
 
         Args:
             doc_name: 文档名称
             question: 问题
+            ai_answer: AI回答
             result: 结果
             reason: 原因
         """
-        print(f"\n{Fore.CYAN}📄 文档: {doc_name}{Style.RESET_ALL}")
-        print(f"❓ 问题: {question[:100]}{'...' if len(question) > 100 else ''}")
-
-        if result == "是":
-            colored_result = f"{Fore.GREEN}✅ {result}{Style.RESET_ALL}"
-        elif result == "否":
-            colored_result = f"{Fore.RED}❌ {result}{Style.RESET_ALL}"
-        else:
-            colored_result = f"{Fore.YELLOW}⚠️ {result}{Style.RESET_ALL}"
-
-        print(f"🔍 结果: {colored_result}")
-        print(f"📝 原因: {reason[:150]}{'...' if len(reason) > 150 else ''}")
+        print_comparison_result_panel(doc_name, question, ai_answer, result, reason)
 
     @staticmethod
     def print_error(message: str):
@@ -539,7 +558,7 @@ class CLIInterface:
         Args:
             message: 错误消息
         """
-        print(f"{Fore.RED}错误: {message}{Style.RESET_ALL}", file=sys.stderr)
+        print_error(message)
 
     @staticmethod
     def print_warning(message: str):
@@ -549,7 +568,7 @@ class CLIInterface:
         Args:
             message: 警告消息
         """
-        print(f"{Fore.YELLOW}警告: {message}{Style.RESET_ALL}")
+        print_warning(message)
 
     @staticmethod
     def print_success(message: str):
@@ -559,7 +578,7 @@ class CLIInterface:
         Args:
             message: 成功消息
         """
-        print(f"{Fore.GREEN}✅ {message}{Style.RESET_ALL}")
+        print_success(message)
 
     @staticmethod
     def print_info(message: str):
@@ -569,7 +588,7 @@ class CLIInterface:
         Args:
             message: 信息内容
         """
-        print(f"ℹ️  {message}")
+        print_info(message)
 
     @staticmethod
     def get_confirmation(message: str, default: bool = True) -> bool:
@@ -583,10 +602,4 @@ class CLIInterface:
         Returns:
             bool: 用户确认结果
         """
-        suffix = " (Y/n): " if default else " (y/N): "
-        response = input(message + suffix).lower().strip()
-
-        if not response:
-            return default
-
-        return response == "y" if default else response != "n"
+        return confirm(message, default=default)

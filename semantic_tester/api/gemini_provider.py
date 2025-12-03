@@ -24,16 +24,19 @@ try:
     from colorama import Fore, Style  # type: ignore
 except ImportError:
     # 如果 colorama 不可用，定义空的颜色和样式
-    class Fore:
+    class Fore:  # type: ignore[no-redef]
         GREEN = ""
         RED = ""
 
-    class Style:
+    class Style:  # type: ignore[no-redef]
         BRIGHT = ""
         RESET_ALL = ""
 
 
 from .base_provider import AIProvider
+
+
+from .prompts import SEMANTIC_CHECK_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,7 @@ class GeminiProvider(AIProvider):
         return [
             "gemini-2.5-flash",
             "gemini-2.5-pro",
+            "gemini-2.0-flash-thinking-exp-1219",  # 支持思维链的模型
             "gemini-1.5-flash",
             "gemini-1.5-pro",
         ]
@@ -104,6 +108,8 @@ class GeminiProvider(AIProvider):
         ai_answer: str,
         source_document: str,
         model: Optional[str] = None,
+        stream: bool = False,
+        show_thinking: bool = False,
     ) -> tuple[str, str]:
         """
         执行语义相似度检查
@@ -113,6 +119,8 @@ class GeminiProvider(AIProvider):
             ai_answer: AI回答内容
             source_document: 源文档内容
             model: 使用的模型（可选）
+            stream: 是否使用流式输出
+            show_thinking: 是否显示思维链（仅思考模型有效）
 
         Returns:
             tuple[str, str]: (结果, 原因)，结果为"是"/"否"/"错误"
@@ -129,7 +137,9 @@ class GeminiProvider(AIProvider):
         for attempt in range(max_retries):
             # 获取可用客户端
             if not self._get_available_client():
-                if not self._handle_no_client(attempt, max_retries, default_retry_delay):
+                if not self._handle_no_client(
+                    attempt, max_retries, default_retry_delay
+                ):
                     return "错误", "无可用 Gemini 模型"
                 continue
 
@@ -139,11 +149,20 @@ class GeminiProvider(AIProvider):
                 target=self.show_waiting_indicator, args=(stop_event,)
             )
             waiting_thread.daemon = True
-            waiting_thread.start()
+
+            # 只有在非流式模式才显示等待指示器
+            if not stream:
+                waiting_thread.start()
 
             try:
                 result, reason = self._call_gemini_api(
-                    model_to_use, prompt, attempt, max_retries
+                    model_to_use,
+                    prompt,
+                    attempt,
+                    max_retries,
+                    stream,
+                    show_thinking,
+                    stop_event,
                 )
                 if result != "RETRY":
                     return result, reason
@@ -177,8 +196,15 @@ class GeminiProvider(AIProvider):
             return True
         return False
 
-    def _call_gemini_api(
-        self, model_to_use: str, prompt: str, attempt: int, max_retries: int
+    def _call_gemini_api(  # noqa: C901
+        self,
+        model_to_use: str,
+        prompt: str,
+        attempt: int,
+        max_retries: int,
+        stream: bool = False,
+        show_thinking: bool = False,
+        stop_event: Optional[threading.Event] = None,
     ) -> tuple[str, str]:
         """
         调用 Gemini API
@@ -186,47 +212,153 @@ class GeminiProvider(AIProvider):
         Returns:
             tuple[str, str]: (结果, 原因) 或 ("RETRY", "") 表示需要重试
         """
+        import sys
+
         logger.info(
             f"正在调用 Gemini API 进行语义比对 (尝试 {attempt + 1}/{max_retries})..."
         )
 
-        response = self.client.models.generate_content(  # type: ignore
-            model=model_to_use,
-            contents=[prompt],
-            config=types.GenerateContentConfig(temperature=0),
-        )
-
-        if response is None or response.text is None:
-            logger.warning("Gemini API 返回空响应")
-            return "错误", "API 返回空响应"
-
-        response_text = response.text.strip()
-        if response_text.startswith("```json") and response_text.endswith(
-            "```"
-        ):
-            response_text = response_text[7:-3].strip()
+        # 检查是否是思考模型
+        is_thinking_model = "thinking" in model_to_use.lower()
 
         try:
-            parsed_response = json.loads(response_text)
-            result = parsed_response.get("result", "无法判断").strip()
-            reason = parsed_response.get("reason", "无").strip()
-
-            colored_result = result
-            if result == "是":
-                colored_result = (
-                    Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
-                )
-            elif result == "否":
-                colored_result = (
-                    Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
+            if stream:
+                # 流式调用
+                response = self.client.models.generate_content_stream(  # type: ignore
+                    model=model_to_use,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(temperature=0),
                 )
 
-            logger.info(f"语义比对结果：{colored_result}")
-            return result, reason
+                # 停止等待指示器（如果有）
+                if stop_event:
+                    stop_event.set()
 
-        except json.JSONDecodeError as e:
-            logger.warning(f"解析 JSON 失败: {response_text}, 错误: {e}")
-            return "错误", f"JSON 解析失败: {e}"
+                full_response = ""
+                thinking_content = ""
+                first_char_printed = False
+
+                logger.info("开始接收流式响应...")
+
+                for chunk in response:
+                    if chunk.text:
+                        # 流式输出内容
+                        if not first_char_printed:
+                            # 如果是思考模型且需要显示思维链
+                            if is_thinking_model and show_thinking:
+                                # 尝试提取思维内容
+                                if hasattr(chunk, "candidates") and chunk.candidates:
+                                    candidate = chunk.candidates[0]
+                                    if hasattr(candidate, "content") and hasattr(
+                                        candidate.content, "parts"
+                                    ):
+                                        for part in candidate.content.parts:
+                                            if (
+                                                hasattr(part, "thought")
+                                                and part.thought
+                                            ):
+                                                thinking_content += getattr(
+                                                    part, "text", ""
+                                                )
+
+                            sys.stdout.write(f"\r{' ' * 50}\r")  # 清除等待指示器
+                            sys.stdout.write("Gemini: ")
+                            sys.stdout.flush()
+                            first_char_printed = True
+
+                        # 输出内容
+                        print(chunk.text, end="", flush=True)
+                        full_response += chunk.text
+
+                # 换行
+                if first_char_printed:
+                    print()
+
+                # 如果有思维内容且需要显示
+                if thinking_content and show_thinking:
+                    from rich.panel import Panel
+                    from rich.markdown import Markdown
+                    from rich import print as rprint
+                    
+                    rprint(Panel(
+                        Markdown(thinking_content),
+                        title="[bold blue]💭 思维过程[/bold blue]",
+                        border_style="bright_cyan",
+                        expand=False
+                    ))
+
+                response_text = full_response.strip()
+            else:
+                # 非流式调用
+                response = self.client.models.generate_content(  # type: ignore
+                    model=model_to_use,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(temperature=0),
+                )
+
+                if response is None or response.text is None:
+                    logger.warning("Gemini API 返回空响应")
+                    return "错误", "API 返回空响应"
+
+                # 如果是思考模型，尝试提取思维内容
+                if is_thinking_model and show_thinking:
+                    try:
+                        if hasattr(response, "candidates") and response.candidates:
+                            candidate = response.candidates[0]
+                            if hasattr(candidate, "content") and hasattr(
+                                candidate.content, "parts"
+                            ):
+                                thinking_parts = []
+                                for part in candidate.content.parts:
+                                    if hasattr(part, "thought") and part.thought:
+                                        thinking_parts.append(getattr(part, "text", ""))
+
+                                if thinking_parts:
+                                    thinking_content = "\n".join(thinking_parts)
+                                    logger.info(f"\n💭 思维过程:\n{thinking_content}\n")
+                    except Exception as e:
+                        logger.debug(f"提取思维内容失败: {e}")
+
+                response_text = response.text.strip()
+
+            # 解析响应
+            if response_text.startswith("```json") and response_text.endswith("```"):
+                response_text = response_text[7:-3].strip()
+
+            try:
+                parsed_response = json.loads(response_text)
+                result = parsed_response.get("result", "无法判断").strip()
+                reason = parsed_response.get("reason", "无").strip()
+
+                colored_result = result
+                if result == "是":
+                    colored_result = (
+                        Style.BRIGHT + Fore.GREEN + result + Style.RESET_ALL
+                    )
+                elif result == "否":
+                    colored_result = Style.BRIGHT + Fore.RED + result + Style.RESET_ALL
+
+                logger.info(f"语义比对结果：{colored_result}")
+                return result, reason
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"解析 JSON 失败: {response_text}, 错误: {e}")
+                return "错误", f"JSON 解析失败: {e}"
+
+        except google.api_core.exceptions.ResourceExhausted as e:
+            # 速率限制错误，需要重试
+            error_msg = str(e)
+            logger.warning(f"Gemini API 速率限制: {error_msg}")
+
+            if attempt < max_retries - 1:
+                retry_after = self._extract_retry_delay(error_msg) or 60
+                logger.info("检测到 429 错误，立即强制轮转到下一个密钥")
+                current_key = self.api_keys[self.current_key_index]
+                self.key_cooldown_until[current_key] = time.time() + retry_after
+                self._rotate_key(force_rotate=True)
+                return "RETRY", ""
+
+            return "错误", f"API 调用次数超限: {error_msg}"
 
     def _handle_general_error(
         self, e: Exception, attempt: int, max_retries: int, default_retry_delay: int
@@ -240,16 +372,14 @@ class GeminiProvider(AIProvider):
         error_msg = str(e)
 
         if isinstance(e, json.JSONDecodeError):
-            logger.warning(
-                f"Gemini 返回的 JSON 格式不正确，错误：{error_msg}"
-            )
+            logger.warning(f"Gemini 返回的 JSON 格式不正确，错误：{error_msg}")
             return False  # JSON解析错误不重试
         elif isinstance(e, google.api_core.exceptions.ResourceExhausted):
-            logger.warning(
-                f"调用 Gemini API 时发生速率限制错误 (429)：{error_msg}"
-            )
+            logger.warning(f"调用 Gemini API 时发生速率限制错误 (429)：{error_msg}")
             if attempt < max_retries - 1:
-                retry_after = self._extract_retry_delay(error_msg) or default_retry_delay
+                retry_after = (
+                    self._extract_retry_delay(error_msg) or default_retry_delay
+                )
                 logger.info("检测到 429 错误，立即强制轮转到下一个密钥")
                 current_key = self.api_keys[self.current_key_index]
                 self.key_cooldown_until[current_key] = time.time() + retry_after
@@ -269,42 +399,24 @@ class GeminiProvider(AIProvider):
         self, question: str, ai_answer: str, source_document_content: str
     ) -> str:
         """生成语义比对提示词"""
-        return f"""
-请判断以下AI客服回答与源知识库文档内容在语义上是否相符。
-如果AI客服回答的内容能够从源知识库文档中推断出来，或者与源文档的核心信息一致，则认为相符。
-如果AI客服回答的内容与源文档相悖，或者包含源文档中没有的信息且无法合理推断，则认为不相符。
-
-请以JSON格式返回结果，包含两个字段：
-- "result": "是" 或 "否"
-- "reason": 详细的判断依据
-
-问题点: {question}
-AI客服回答: {ai_answer}
-源知识库文档内容:
----
-{source_document_content}
----
-
-请直接回答JSON。
-"""
+        return SEMANTIC_CHECK_PROMPT.format(
+            question=question,
+            ai_answer=ai_answer,
+            source_document=source_document_content,
+        )
 
     def _initialize_api_keys(self):
-        """测试并初始化可用的 API 密钥列表"""
-        logger.info("开始测试 Gemini API Key 的有效性...")
-        valid_keys = []
-        current_time = time.time()
-
-        for key in self.api_keys:
-            if self.validate_api_key(key):
-                valid_keys.append(key)
-                self.key_last_used_time[key] = current_time
-                self.key_cooldown_until[key] = 0.0
-
-        self.api_keys = valid_keys
+        """初始化 API 密钥列表（启动时跳过验证）"""
         if not self.api_keys:
-            logger.warning("所有提供的 Gemini API Key 均无效或未设置")
-        else:
-            logger.info(f"成功识别 {len(self.api_keys)} 个有效 Gemini API Key")
+            logger.debug("Gemini API 密钥未配置")
+            return
+
+        current_time = time.time()
+        for key in self.api_keys:
+            self.key_last_used_time[key] = current_time
+            self.key_cooldown_until[key] = 0.0
+
+        logger.debug(f"已初始化 {len(self.api_keys)} 个 Gemini API 密钥")
 
     def _configure_client(self):
         """配置 Gemini 客户端"""
@@ -315,7 +427,9 @@ AI客服回答: {ai_answer}
         current_api_key = self.api_keys[self.current_key_index]
         try:
             self.client = genai.Client(api_key=current_api_key)
-            logger.info(f"Gemini API 已配置，使用密钥索引: {self.current_key_index}")
+            logger.debug(
+                f"Gemini API 客户端已配置，使用密钥索引: {self.current_key_index}"
+            )
             self.key_last_used_time[current_api_key] = time.time()
         except Exception as e:
             logger.error(f"Gemini API 配置失败: {e}")
@@ -334,6 +448,10 @@ AI客服回答: {ai_answer}
     def _rotate_key(self, force_rotate: bool = False):
         """轮转到下一个 API 密钥"""
         if not self.api_keys:
+            return
+
+        # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+        if not self.auto_rotate and not force_rotate:
             return
 
         current_time = time.time()

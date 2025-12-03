@@ -93,7 +93,7 @@ class ExcelProcessor:
         self.is_dify_format = (
             has_question_col and has_response_col and has_timestamp_col
         )
-        
+
         # 如果不是Dify格式，提供转换建议
         if not self.is_dify_format:
             self._suggest_dify_format_conversion()
@@ -130,9 +130,13 @@ class ExcelProcessor:
 
             # 添加列索引信息
             if question_col:
-                format_info["question_col_index"] = self.column_names.index(question_col)
+                format_info["question_col_index"] = self.column_names.index(
+                    question_col
+                )
             if response_cols:
-                format_info["response_cols_index"] = [self.column_names.index(col) for col in response_cols]
+                format_info["response_cols_index"] = [
+                    self.column_names.index(col) for col in response_cols
+                ]
 
         self.format_info = format_info
         return format_info
@@ -140,9 +144,11 @@ class ExcelProcessor:
     def _suggest_dify_format_conversion(self):
         """建议转换为Dify Chat Tester格式"""
         from colorama import Fore, Style
-        
+
         print(f"\n{Fore.YELLOW}⚠️  检测到非标准Dify Chat Tester格式{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}建议使用Dify Chat Tester标准格式以获得最佳体验：{Style.RESET_ALL}")
+        print(
+            f"{Fore.CYAN}建议使用Dify Chat Tester标准格式以获得最佳体验：{Style.RESET_ALL}"
+        )
         print()
         print("标准格式包含以下列：")
         print("  • 时间戳")
@@ -156,23 +162,26 @@ class ExcelProcessor:
         print("选项：")
         print("1. 生成Dify格式模板")
         print("2. 继续使用当前格式（可能影响功能）")
-        
-        choice = input(f"\n{Fore.YELLOW}请选择 (1-2，默认: 1): {Style.RESET_ALL}").strip()
-        
+
+        choice = input(
+            f"\n{Fore.YELLOW}请选择 (1-2，默认: 1): {Style.RESET_ALL}"
+        ).strip()
+
         if choice == "2":
             print(f"{Fore.YELLOW}⚠️  将使用当前格式，某些功能可能受限{Style.RESET_ALL}")
             return
-        
+
         # 生成Dify模板
         try:
             from .dify_template_generator import DifyTemplateGenerator
+
             generator = DifyTemplateGenerator()
-            
+
             print(f"\n{Fore.GREEN}📝 正在生成Dify Chat Tester模板...{Style.RESET_ALL}")
-            
+
             # 默认生成Dify供应商模板
             template_path = generator.generate_basic_template("dify")
-            
+
             print(f"\n{Fore.CYAN}模板使用说明：{Style.RESET_ALL}")
             print(f"1. 模板文件已生成: {template_path}")
             print("2. 在Excel中填写您的测试问题")
@@ -180,7 +189,7 @@ class ExcelProcessor:
             print("4. 保存后重新运行本程序进行语义评估")
             print()
             print(f"{Fore.GREEN}✅ 模板生成完成！{Style.RESET_ALL}")
-            
+
         except Exception as e:
             print(f"{Fore.RED}❌ 模板生成失败: {e}{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}⚠️  将继续使用当前格式{Style.RESET_ALL}")
@@ -196,12 +205,19 @@ class ExcelProcessor:
                 f"\n{Fore.GREEN}✅ 检测到 Dify Chat Tester 输出格式！{Style.RESET_ALL}"
             )
             print("将自动适配列映射关系：")
-            print(f"  • 序号 {self.format_info['question_col_index'] + 1} ({self.format_info['question_col']}) → 问题点")
-            response_col = (
-                self.format_info['response_cols'][0]
-                if self.format_info['response_cols'] else '未知'
+            print(
+                f"  • 序号 {self.format_info['question_col_index'] + 1} ({self.format_info['question_col']}) → 问题点"
             )
-            response_col_index = self.format_info['response_cols_index'][0] if self.format_info['response_cols_index'] else 0
+            response_col = (
+                self.format_info["response_cols"][0]
+                if self.format_info["response_cols"]
+                else "未知"
+            )
+            response_col_index = (
+                self.format_info["response_cols_index"][0]
+                if self.format_info["response_cols_index"]
+                else 0
+            )
             print(f"  • 序号 {response_col_index + 1} ({response_col}) → AI客服回答")
             print("  • 序号 0 (文档名称) → 需要手动指定 - 自动添加列")
 
@@ -242,16 +258,24 @@ class ExcelProcessor:
         Returns:
             Optional[Dict[str, int]]: 列索引映射，如果失败返回None
         """
-        doc_name_col_index = 0  # 文档名称列
-        question_col_index = self.column_names.index(
-            self.format_info["question_col"]
-        )
+        # 动态查找文档名称列索引，而不是硬编码为0
+        try:
+            doc_name_col_index = self.column_names.index("文档名称")
+        except ValueError:
+            # 如果没找到（理论上不应该发生，因为auto_add_document_column已调用），默认设为0
+            logger.warning("未找到'文档名称'列，默认使用第一列")
+            doc_name_col_index = 0
 
-        # 处理响应列选择
-        response_col = self._select_response_column()
-        if not response_col:
+        question_col_index = self.column_names.index(self.format_info["question_col"])
+
+        # 直接使用format_info中的响应列（已在主程序中选择）
+        response_cols = self.format_info["response_cols"]
+        if not response_cols:
+            logger.error("未找到响应列")
             return None
 
+        # 使用第一个响应列（多个响应列的选择已在主程序中完成）
+        response_col = response_cols[0]
         ai_answer_col_index = self.column_names.index(response_col)
 
         column_mapping = {
@@ -260,13 +284,9 @@ class ExcelProcessor:
             "ai_answer_col_index": ai_answer_col_index,
         }
 
-        self._display_column_mapping(column_mapping)
-
-        # 询问是否使用自动配置
-        if self._confirm_auto_config():
-            return column_mapping
-
-        return None
+        # 自动配置模式，不再显示列映射和确认
+        # 这些信息已在display_format_info和主程序中显示
+        return column_mapping
 
     def _select_response_column(self) -> Optional[str]:
         """
@@ -284,16 +304,12 @@ class ExcelProcessor:
         if len(response_cols) == 1:
             return response_cols[0]
 
-        print(
-            f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}"
-        )
+        print(f"\n{Fore.YELLOW}发现多个响应列，请选择要使用的一个：{Style.RESET_ALL}")
         for i, col in enumerate(response_cols):
             print(f"  {i + 1}. {col}")
 
         while True:
-            choice = input(
-                f"请输入选择 (1-{len(response_cols)}, 默认: 1): "
-            ).strip()
+            choice = input(f"请输入选择 (1-{len(response_cols)}, 默认: 1): ").strip()
             if not choice:
                 choice = "1"
 
@@ -302,9 +318,7 @@ class ExcelProcessor:
                 if 0 <= choice_idx < len(response_cols):
                     return response_cols[choice_idx]
                 else:
-                    print(
-                        f"选择无效，请输入 1-{len(response_cols)} 之间的数字。"
-                    )
+                    print(f"选择无效，请输入 1-{len(response_cols)} 之间的数字。")
             except ValueError:
                 print("请输入有效的数字。")
 
@@ -317,17 +331,20 @@ class ExcelProcessor:
         # 文档名称列 - 自动添加的列固定为序号0
         doc_col_num = 0  # 自动添加的文档名称列始终是序号0
         print(f"  • 文档名称: 序号 {doc_col_num} ('文档名称' - 自动添加)")
-        
+
         # 问题点列 - 使用原Excel列序号
-        question_col_num = column_mapping['question_col_index'] + 1
-        print(f"  • 问题点: 序号 {question_col_num} ('{self.format_info['question_col']}')")
+        question_col_num = column_mapping["question_col_index"] + 1
+        print(
+            f"  • 问题点: 序号 {question_col_num} ('{self.format_info['question_col']}')"
+        )
 
         # AI客服回答列 - 使用原Excel列序号
         response_col_name = (
-            self.format_info['response_cols'][0]
-            if self.format_info['response_cols'] else '未知'
+            self.format_info["response_cols"][0]
+            if self.format_info["response_cols"]
+            else "未知"
         )
-        ai_answer_col_num = column_mapping['ai_answer_col_index'] + 1
+        ai_answer_col_num = column_mapping["ai_answer_col_index"] + 1
         print(f"  • AI客服回答: 序号 {ai_answer_col_num} ('{response_col_name}')")
 
     def _confirm_auto_config(self) -> bool:
@@ -351,17 +368,17 @@ class ExcelProcessor:
         """
         # 获取"文档名称"列
         doc_name_col_index = self._get_column_index_by_input(
-            "文档名称", "请输入\"文档名称\"所在列的名称或序号"
+            "文档名称", '请输入"文档名称"所在列的名称或序号'
         )
 
         # 获取"问题点"列
         question_col_index = self._get_column_index_by_input(
-            "问题点", "请输入\"问题点\"所在列的名称或序号"
+            "问题点", '请输入"问题点"所在列的名称或序号'
         )
 
         # 获取"AI客服回答"列
         ai_answer_col_index = self._get_column_index_by_input(
-            "AI客服回答", "请输入\"AI客服回答\"所在列的名称或序号"
+            "AI客服回答", '请输入"AI客服回答"所在列的名称或序号'
         )
 
         return {
@@ -381,7 +398,7 @@ class ExcelProcessor:
         Returns:
             int: 列索引
         """
-        col_input = input(f"{prompt} (例如: \"{column_type}\" 或 \"1\"): ")
+        col_input = input(f'{prompt} (例如: "{column_type}" 或 "1"): ')
         col_index = get_column_index(self.column_names, col_input)
 
         if col_index == -1:
@@ -392,9 +409,14 @@ class ExcelProcessor:
 
         return col_index
 
-    def get_result_columns(self) -> Dict[str, Tuple[str, int]]:
+    def get_result_columns(  # noqa: C901
+        self, auto_config: bool = False
+    ) -> Dict[str, Tuple[str, int]]:
         """
         获取结果保存列配置
+
+        Args:
+            auto_config: 是否使用自动配置（针对 dify 格式）
 
         Returns:
             Dict[str, Tuple[str, int]]: 结果列配置，包含列名和索引
@@ -402,6 +424,28 @@ class ExcelProcessor:
         assert (
             self.df is not None
         ), "DataFrame must be loaded before getting result columns"
+
+        # 如果是自动配置模式，直接使用默认列名
+        if auto_config and self.is_dify_format:
+            similarity_result_col_input = "语义是否与源文档相符"
+            reason_col_input = "判断依据"
+
+            # 自动添加列
+            similarity_result_col_index = get_or_add_column(
+                self.df, self.column_names, similarity_result_col_input
+            )
+            reason_col_index = get_or_add_column(
+                self.df, self.column_names, reason_col_input
+            )
+
+            return {
+                "similarity_result": (
+                    similarity_result_col_input,
+                    similarity_result_col_index,
+                ),
+                "reason": (reason_col_input, reason_col_index),
+            }
+
         # --- 获取"语义是否与源文档相符"结果保存列 ---
         print("\n请选择'语义是否与源文档相符'结果保存列:")
         print("现有列:")
@@ -410,14 +454,14 @@ class ExcelProcessor:
             marker = " [自动添加]" if i == 0 and col_name == "文档名称" else ""
             print(f"  {i}. {col_name}{marker}")
         print("  新建列: 直接输入列名")
-        
+
         similarity_result_col_input = input(
             "请选择序号、输入列名或按回车使用默认: "
         ).strip()
-        
+
         if not similarity_result_col_input:
             similarity_result_col_input = "语义是否与源文档相符"
-        
+
         # 处理输入
         try:
             col_index = int(similarity_result_col_input)
@@ -444,14 +488,12 @@ class ExcelProcessor:
             marker = " [自动添加]" if i == 0 and col_name == "文档名称" else ""
             print(f"  {i}. {col_name}{marker}")
         print("  新建列: 直接输入列名")
-        
-        reason_col_input = input(
-            "请选择序号、输入列名或按回车使用默认: "
-        ).strip()
-        
+
+        reason_col_input = input("请选择序号、输入列名或按回车使用默认: ").strip()
+
         if not reason_col_input:
             reason_col_input = "判断依据"
-        
+
         # 处理输入
         try:
             col_index = int(reason_col_input)
@@ -478,34 +520,54 @@ class ExcelProcessor:
             "reason": (reason_col_input, reason_col_index),
         }
 
-    def suggest_document_names(self):
+    def suggest_document_names(self, auto_config: bool = False):
         """
         智能建议文档名称填充
-        
+
         基于文件名或对话ID等信息为文档名称列提供填充建议
+
+        Args:
+            auto_config: 是否使用自动配置
         """
+        assert (
+            self.df is not None
+        ), "DataFrame must be loaded before suggesting document names"
+
         if "文档名称" not in self.column_names:
             return
-            
+
         # 检查文档名称列是否为空
-        doc_col_empty = self.df["文档名称"].isna().all() or (self.df["文档名称"] == "").all()
-        
+        doc_col_empty = (
+            self.df["文档名称"].isna().all() or (self.df["文档名称"] == "").all()
+        )
+
         if not doc_col_empty:
             return  # 已经有内容，不需要建议
-            
-        print(f"\n{Fore.YELLOW}📝 检测到'文档名称'列为空，建议填充方式：{Style.RESET_ALL}")
+
+        # 如果是自动配置模式，直接跳过填充，使用默认行为（读取整个知识库）
+        if auto_config:
+            print(
+                f"\n{Fore.YELLOW}ℹ️  文档名称列为空，将默认读取整个知识库文件夹进行比对。{Style.RESET_ALL}"
+            )
+            return
+
+        print(
+            f"\n{Fore.YELLOW}📝 检测到'文档名称'列为空，建议填充方式：{Style.RESET_ALL}"
+        )
         print("1. 使用文件名作为文档名")
         print("2. 使用统一文档名（手动输入）")
-        print("3. 跳过填充（稍后手动填写）")
-        
-        choice = input(f"\n{Fore.YELLOW}请选择 (1-3，默认: 3): {Style.RESET_ALL}").strip()
-        
+        print("3. 跳过填充（稍后手动填写或读取整个知识库）")
+
+        choice = input(
+            f"\n{Fore.YELLOW}请选择 (1-3，默认: 3): {Style.RESET_ALL}"
+        ).strip()
+
         if choice == "1":
             # 使用文件名作为文档名
-            file_name = os.path.splitext(os.path.basename(self.file_path))[0]
+            file_name = os.path.splitext(os.path.basename(self.excel_path))[0]
             self.df["文档名称"] = file_name
             print(f"✅ 已将所有行的文档名称设置为: {file_name}")
-            
+
         elif choice == "2":
             # 使用统一文档名
             doc_name = input(f"{Fore.YELLOW}请输入文档名称: {Style.RESET_ALL}").strip()
@@ -515,7 +577,7 @@ class ExcelProcessor:
             else:
                 print("⚠️  文档名称为空，跳过填充")
         else:
-            print("ℹ️  跳过文档名称填充，请稍后手动填写")
+            print("ℹ️  跳过文档名称填充，将读取整个知识库")
 
     def setup_result_columns(self, result_columns: Dict[str, Tuple[str, int]]):
         """
@@ -618,6 +680,14 @@ class ExcelProcessor:
                 f"已保存中间结果到 {output_path} (已处理 {processed_count} 条记录)。"
             )
         except Exception as e:
+            # 检查是否为权限错误（通常是文件被占用）
+            if "Permission denied" in str(e) or isinstance(e, PermissionError):
+                from semantic_tester.ui.terminal_ui import print_warning, confirm
+                print_warning(f"⚠️  无法保存文件 '{output_path}'。文件可能正在被其他程序（如Excel）占用。")
+                if confirm("请关闭文件后按回车重试 (输入 n 跳过本次保存)", default=True):
+                    self.save_intermediate_results(output_path, processed_count)
+                    return
+            
             logger.error(f"保存中间结果失败: {e}")
 
     def save_final_results(self, output_path: str):
@@ -634,6 +704,27 @@ class ExcelProcessor:
             self.df.to_excel(output_path, index=False)
             logger.info(f"最终结果已保存到 {output_path}")
         except Exception as e:
+            # 检查是否为权限错误（通常是文件被占用）
+            if "Permission denied" in str(e) or isinstance(e, PermissionError):
+                from semantic_tester.ui.terminal_ui import print_warning, confirm
+                print_warning(f"⚠️  无法保存文件 '{output_path}'。文件可能正在被其他程序（如Excel）占用。")
+                # 最终结果保存失败，必须重试，否则数据丢失
+                while True:
+                    if confirm("请关闭文件后按回车重试 (输入 n 放弃保存 - 警告：数据将丢失！)", default=True):
+                        try:
+                            self.df.to_excel(output_path, index=False)
+                            logger.info(f"最终结果已保存到 {output_path}")
+                            return
+                        except Exception as retry_e:
+                            if "Permission denied" in str(retry_e) or isinstance(retry_e, PermissionError):
+                                print_warning("仍然无法保存，请确保文件已关闭。")
+                            else:
+                                logger.error(f"重试保存失败: {retry_e}")
+                                break
+                    else:
+                        logger.warning("用户放弃保存最终结果")
+                        return
+
             logger.error(f"保存最终结果失败: {e}")
 
     def get_total_records(self) -> int:
@@ -653,3 +744,116 @@ class ExcelProcessor:
             bool: 文件是否存在
         """
         return os.path.exists(self.excel_path)
+
+    def load_existing_results(
+        self, output_path: str, result_columns: Dict[str, Tuple[str, int]]
+    ) -> int:
+        """
+        从现有的输出文件中加载结果，用于断点续传
+
+        Args:
+            output_path: 输出文件路径
+            result_columns: 结果列配置
+
+        Returns:
+            int: 已加载的结果数量
+        """
+        if not os.path.exists(output_path):
+            return 0
+
+        try:
+            # 读取现有结果文件
+            existing_df = pd.read_excel(output_path)
+            
+            # 验证行数是否一致
+            if len(existing_df) != len(self.df):
+                logger.warning(
+                    f"现有结果文件行数 ({len(existing_df)}) 与当前文件行数 ({len(self.df)}) 不一致，"
+                    "无法完全恢复进度。将尝试按索引合并。"
+                )
+
+            similarity_col_name = result_columns["similarity_result"][0]
+            reason_col_name = result_columns["reason"][0]
+
+            # 检查结果文件是否包含结果列
+            if (
+                similarity_col_name not in existing_df.columns
+                or reason_col_name not in existing_df.columns
+            ):
+                logger.warning("现有结果文件不包含结果列，无法恢复进度。")
+                return 0
+
+            loaded_count = 0
+            
+            # 将现有结果合并到当前 DataFrame
+            # 注意：这里假设行顺序一致，通过索引匹配
+            for index in existing_df.index:
+                if index >= len(self.df):
+                    break
+                    
+                similarity = existing_df.at[index, similarity_col_name]
+                reason = existing_df.at[index, reason_col_name]
+                
+                # 只有当结果不为空时才加载
+                if pd.notna(similarity) and str(similarity).strip() != "":
+                    self.df.at[index, similarity_col_name] = similarity
+                    self.df.at[index, reason_col_name] = reason
+                    loaded_count += 1
+
+            logger.info(f"成功从 {output_path} 加载了 {loaded_count} 条历史结果")
+            return loaded_count
+
+        except Exception as e:
+            logger.error(f"加载现有结果失败: {e}")
+            return 0
+
+    def has_result(
+        self, row_index: int, result_columns: Dict[str, Tuple[str, int]]
+    ) -> bool:
+        """
+        检查指定行是否已有结果
+
+        Args:
+            row_index: 行索引
+            result_columns: 结果列配置
+
+        Returns:
+            bool: 是否已有结果
+        """
+        if self.df is None:
+            return False
+            
+        similarity_col_name = result_columns["similarity_result"][0]
+        
+        # 检查列是否存在
+        if similarity_col_name not in self.df.columns:
+            return False
+            
+        val = self.df.at[row_index, similarity_col_name]
+        # 检查值是否非空且不是空字符串
+        return pd.notna(val) and str(val).strip() != ""
+
+    def get_result(self, row_index: int, column_name: str) -> str:
+        """
+        获取指定行指定列的结果值
+        
+        Args:
+            row_index: 行索引
+            column_name: 列名
+        
+        Returns:
+            str: 结果值，如果不存在返回空字符串
+        """
+        if self.df is None:
+            return ""
+        
+        # 检查列是否存在
+        if column_name not in self.df.columns:
+            return ""
+        
+        val = self.df.at[row_index, column_name]
+        
+        # 返回字符串值，如果为空或NaN返回空字符串
+        if pd.notna(val):
+            return str(val).strip()
+        return ""
