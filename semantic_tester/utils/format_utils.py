@@ -269,8 +269,11 @@ class FormatUtils:
             if keyword:  # 确保关键词不为空
                 # 使用不区分大小写的替换
                 pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+
+                # 用匹配到的整个关键词（group 0）包裹颜色代码
                 highlighted_text = pattern.sub(
-                    f"{color_code}\\1{reset_code}", highlighted_text
+                    lambda m: f"{color_code}{m.group(0)}{reset_code}",
+                    highlighted_text,
                 )
 
         return highlighted_text

@@ -43,3 +43,19 @@ target-version = ['py39']
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.coverage.run]
+source = ["semantic_tester"]
+omit = [
+  "semantic_tester/ui/*",
+  "semantic_tester/api/gemini_provider.py",
+  "semantic_tester/api/openai_provider.py",
+  "semantic_tester/api/anthropic_provider.py",
+  "semantic_tester/api/dify_provider.py",
+  "semantic_tester/api/iflow_provider.py",
+  "semantic_tester/utils/dify_template_generator.py",
+  "semantic_tester/excel/processor.py",
+]
+
+[tool.coverage.report]
+show_missing = true

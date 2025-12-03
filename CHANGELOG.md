@@ -13,6 +13,9 @@
   - 完善 `.gitignore` 配置（忽略 `kb-docs` 等）
   - 修复 `main.py` 语法问题
   - 集成 `rich` 库增强终端显示效果
+  - 新增 `coverage` 默认配置，统一 `semantic_tester` 包的覆盖率统计行为
+  - `format_utils` 关键字高亮实现更健壮（使用回调替换，避免转义问题）
+  - 清理旧版 `tests/verify_rotation.py`，并补充新的单元测试集，保证整体及各模块覆盖率均 ≥ 80%
 - 🎨 **AI 提示词自定义** (新功能):
   - 支持通过 `.env.config` 配置文件自定义语义检查提示词
   - 新增 `SEMANTIC_CHECK_PROMPT` 配置项
