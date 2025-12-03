@@ -1,6 +1,6 @@
 [project]
 name = "semantic_tester"
-version = "2.5.0"
+version = "3.0.0"
 description = "AI客服问答语义比对工具 - 模块化架构，100% 类型安全"
 authors = [
     {name = "Mison", email = "1360962086@qq.com"}
