@@ -96,11 +96,12 @@
 2. **创建 API 密钥**：从账户设置中创建新的 API 密钥
 3. **支持的模型**：claude-3-5-sonnet-20241022、claude-3-opus-20240229 等
 
-### iFlow API
+### iFlow API（推荐）
 
 1. **访问 iFlow 平台**：[https://iflow.cn](https://iflow.cn)
 2. **注册账户并获取 API 密钥**：从控制台获取 iFlow API 密钥
 3. **支持的模型**：qwen3-max、kimi-k2-0905、glm-4.6、deepseek-v3.2 等
+4. **推荐理由**：稳定性好、响应速度快、支持多种主流模型
 
 ## ⬇️ 安装
 
