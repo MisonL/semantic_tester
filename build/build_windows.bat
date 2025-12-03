@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ==========================================
-echo Semantic Tester Windows Build Script
+echo Semantic Tester Windows Build Script (v3.0.0 Updated)
 echo ==========================================
 
 REM Get script directory
