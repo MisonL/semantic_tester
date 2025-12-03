@@ -16,9 +16,22 @@ def create_release_zip():
         print(f"错误: 发布目录不存在: {release_dir}")
         return False
     
+    # 获取版本号
+    version = "unknown"
+    try:
+        pyproject_path = os.path.join(project_root, 'pyproject.toml')
+        if os.path.exists(pyproject_path):
+            with open(pyproject_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip().startswith('version = '):
+                        version = line.split('=')[1].strip().strip('"').strip("'")
+                        break
+    except Exception as e:
+        print(f"警告: 无法读取版本号: {e}")
+
     # 生成ZIP文件名
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    zip_filename = f'semantic_tester_windows_{timestamp}.zip'
+    zip_filename = f'semantic_tester_windows_v{version}_{timestamp}.zip'
     zip_path = os.path.join(project_root, zip_filename)
     
     print(f"正在创建 ZIP 文件: {zip_filename}")

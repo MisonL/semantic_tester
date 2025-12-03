@@ -108,7 +108,7 @@ if exist "%PROJECT_DIR%\release_windows\semantic_tester.exe" (
     
     echo.
     echo Usage instructions:
-    echo 1. Extract semantic_tester_windows_*.zip
+    echo 1. Extract semantic_tester_windows_v*.zip
     echo 2. Copy .env.config.example to .env.config
     echo 3. Edit .env.config to configure API information
     echo 4. Prepare knowledge base documents (in kb-docs directory)

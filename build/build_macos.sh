@@ -190,9 +190,15 @@ if [ -f "$PROJECT_DIR/dist/semantic_tester" ]; then
 </div>
 EOF
     
+    # 获取版本号
+    VERSION=$(grep -m 1 'version = ' "$PROJECT_DIR/pyproject.toml" | sed 's/version = "//;s/"//')
+    if [ -z "$VERSION" ]; then
+        VERSION="unknown"
+    fi
+    
     # 压缩发布包
     cd "$PROJECT_DIR"
-    RELEASE_NAME="semantic_tester_macos_$(date +%Y%m%d_%H%M%S).tar.gz"
+    RELEASE_NAME="semantic_tester_macos_v${VERSION}_$(date +%Y%m%d_%H%M%S).tar.gz"
     tar -czf "$RELEASE_NAME" -C release_macos .
     
     echo "📦 发布包已创建: $PROJECT_DIR/$RELEASE_NAME"
