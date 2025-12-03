@@ -15,7 +15,7 @@
 
 **🔥 已完美集成 [Dify 聊天客户端测试工具](https://github.com/MisonL/dify_chat_tester) 项目，支持直接读取其输出文件进行语义评估！**
 
-它通过调用 Google Gemini API，对给定的问题、AI 客服回答和源文档内容进行比对，判断 AI 客服的回答是否能够从源文档中合理推断，或是否与源文档的核心信息一致。
+它通过调用 AI 供应商的 API（支持 Gemini、OpenAI、Anthropic、Dify、iFlow），对给定的问题、AI 客服回答和源文档内容进行比对，判断 AI 客服的回答是否能够从源文档中合理推断，或是否与源文档的核心信息一致。
 
 工具支持多密钥轮转、速率限制处理，并能从 Excel 文件读取数据，将比对结果实时写入 Excel。
 
