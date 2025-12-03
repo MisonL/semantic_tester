@@ -209,6 +209,13 @@ EOF
     echo "3. 按说明配置并运行程序"
     echo ""
     echo "🎉 打包完成！"
+    
+    # 清理临时文件
+    echo "🧹 清理临时文件..."
+    rm -rf "$PROJECT_DIR/build/semantic_tester" 2>/dev/null || true
+    rm -rf "$PROJECT_DIR/build/semantic_tester.dist" 2>/dev/null || true
+    rm -rf "$PROJECT_DIR/build/semantic_tester.build" 2>/dev/null || true
+    echo "✅ 清理完成"
 else
     echo "❌ 打包失败！"
     echo "请检查错误信息并重试"

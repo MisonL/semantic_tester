@@ -104,6 +104,20 @@ echo 4. Prepare knowledge base documents (in kb-docs directory)
 echo 5. Double-click semantic_tester.exe to start the program
 echo.
 echo Packaging complete!
+
+REM Clean up temporary build directories
+echo Cleaning up temporary files...
+if exist "%PROJECT_DIR%\build\semantic_tester\" (
+    rmdir /s /q "%PROJECT_DIR%\build\semantic_tester\" 2>nul
+)
+if exist "%PROJECT_DIR%\build\semantic_tester.dist\" (
+    rmdir /s /q "%PROJECT_DIR%\build\semantic_tester.dist\" 2>nul
+)
+if exist "%PROJECT_DIR%\build\semantic_tester.build\" (
+    rmdir /s /q "%PROJECT_DIR%\build\semantic_tester.build\" 2>nul
+)
+echo Cleanup complete.
+
 goto :END
 
 :FAILURE
