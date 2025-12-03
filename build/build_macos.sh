@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# macOS Build Script for Semantic Tester
-# Usage: Run ./build/build_macos.sh from project root
+# Semantic Tester macOS 打包脚本
+# 使用方法: 在项目根目录运行 ./build/build_macos.sh
 
 set -e  # Exit on error
 
@@ -14,9 +14,9 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
 echo "=========================================="
-echo "Semantic Tester macOS Build Script"
-echo "Project directory: $PROJECT_DIR"
-echo "Build directory: $SCRIPT_DIR"
+echo "Semantic Tester macOS 打包脚本"
+echo "项目目录: $PROJECT_DIR"
+echo "构建目录: $SCRIPT_DIR"
 echo "=========================================="
 
 # 检查 uv 是否安装
