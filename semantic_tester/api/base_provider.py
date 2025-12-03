@@ -5,7 +5,6 @@ AI供应商抽象基类
 """
 
 import logging
-import sys
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -106,13 +105,13 @@ class AIProvider(ABC):
         from rich.live import Live
         from rich.spinner import Spinner
         from rich.text import Text
-        from rich.panel import Panel
-        from rich import box
 
-        spinner = Spinner("dots", text=Text(f" {self.name}: {self.waiting_text}...", style="cyan"))
-        
+        spinner = Spinner(
+            "dots", text=Text(f" {self.name}: {self.waiting_text}...", style="cyan")
+        )
+
         # 使用 Live 上下文管理器显示加载动画
-        with Live(spinner, refresh_per_second=10, transient=True) as live:
+        with Live(spinner, refresh_per_second=10, transient=True):
             while not stop_event.is_set():
                 time.sleep(0.1)
 

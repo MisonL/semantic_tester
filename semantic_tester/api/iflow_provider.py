@@ -214,9 +214,7 @@ class IflowProvider(AIProvider):
                     "max_tokens": 1000,
                 }
 
-                logger.info(
-                    f"调用 iFlow API 进行语义分析，模型: {target_model}"
-                )
+                logger.info(f"调用 iFlow API 进行语义分析，模型: {target_model}")
 
                 # 检查客户端是否可用
                 if self.client is None:
@@ -233,6 +231,7 @@ class IflowProvider(AIProvider):
                 if stream:
                     # 流式处理（兼容多种 SSE 格式：data:{...} / data: {...} / 纯 JSON 行）
                     from semantic_tester.ui.terminal_ui import StreamDisplay
+
                     stream_display = StreamDisplay(title=f"{self.name} ({self.model})")
                     stream_display.start()
 
@@ -251,7 +250,7 @@ class IflowProvider(AIProvider):
 
                             # 兼容 "data:{...}", "data: {...}" 以及纯 JSON 行
                             if raw.startswith("data:"):
-                                data_str = raw[len("data:"):].strip()
+                                data_str = raw[len("data:") :].strip()
                             else:
                                 data_str = raw
 
@@ -289,7 +288,7 @@ class IflowProvider(AIProvider):
                         content = message.get("content", "")
                         if content:
                             return self._parse_response(content)
-                        
+
                         return "错误", "iFlow API 返回空响应"
                     else:
                         return "错误", f"iFlow API 响应格式异常: {data}"
@@ -347,7 +346,7 @@ class IflowProvider(AIProvider):
         import json
 
         content = content.strip()
-        
+
         # 尝试清理 Markdown 代码块
         if content.startswith("```json"):
             content = content[7:]
@@ -360,7 +359,7 @@ class IflowProvider(AIProvider):
             data = json.loads(content)
             result = data.get("result", "不确定")
             reason = data.get("reason", "未提供原因")
-            
+
             # 规范化结果
             if result not in ["是", "否"]:
                 if "是" in result:
@@ -369,7 +368,7 @@ class IflowProvider(AIProvider):
                     result = "否"
                 else:
                     result = "不确定"
-            
+
             logger.info(f"iFlow JSON 解析成功: {result}")
             return result, reason
         except json.JSONDecodeError:

@@ -443,17 +443,17 @@ class ProviderManager:
             from rich.text import Text
             from rich.panel import Panel
             from rich import box
-            
+
             # 创建问题和回答的预览面板
             content = Text()
             content.append(f"{Icons.QUESTION} 问题: ", style="bold yellow")
             question_text = question[:100] + "..." if len(question) > 100 else question
             content.append(f"{question_text}\n\n", style="white")
-            
-            content.append(f"💬 回答: ", style="bold yellow")
+
+            content.append("💬 回答: ", style="bold yellow")
             answer_text = ai_answer[:200] + "..." if len(ai_answer) > 200 else ai_answer
             content.append(f"{answer_text}", style="white")
-            
+
             panel = Panel(
                 content,
                 title="[bold]📝 评估内容预览[/bold]",

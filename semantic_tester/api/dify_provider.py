@@ -194,7 +194,12 @@ class DifyProvider(AIProvider):
                 # 处理响应
                 return self._process_dify_response(response_data)
 
-            except (AuthenticationError, RateLimitError, requests.exceptions.RequestException, APIError) as e:
+            except (
+                AuthenticationError,
+                RateLimitError,
+                requests.exceptions.RequestException,
+                APIError,
+            ) as e:
                 # 停止等待指示器
                 stop_event.set()
                 if waiting_thread.is_alive():
@@ -206,8 +211,10 @@ class DifyProvider(AIProvider):
 
                 # 如果是最后一次尝试，或者未启用自动轮转且不是网络/API错误，则抛出异常或返回错误
                 # 注意：对于网络错误，即使不轮转也应该重试（可能是临时网络波动）
-                is_network_error = isinstance(e, (requests.exceptions.RequestException, APIError))
-                
+                is_network_error = isinstance(
+                    e, (requests.exceptions.RequestException, APIError)
+                )
+
                 if attempt == max_retries - 1:
                     if is_network_error:
                         return "错误", f"Dify API 调用多次重试失败: {str(e)}"
@@ -219,7 +226,7 @@ class DifyProvider(AIProvider):
                     if self.auto_rotate:
                         logger.info("尝试轮转 Dify API 密钥...")
                         self._rotate_key()
-                
+
                 # 对于网络错误，等待一段时间后重试
                 time.sleep(2)  # 稍作等待
 

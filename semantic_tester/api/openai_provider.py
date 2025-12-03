@@ -294,18 +294,23 @@ class OpenAIProvider(AIProvider):
                             from rich.panel import Panel
                             from rich.markdown import Markdown
                             from rich import print as rprint
-                            
-                            rprint(Panel(
-                                Markdown(choice.message.reasoning_content),
-                                title="[bold blue]💭 推理过程[/bold blue]",
-                                border_style="bright_cyan",
-                                expand=False
-                            ))
+
+                            rprint(
+                                Panel(
+                                    Markdown(choice.message.reasoning_content),
+                                    title="[bold blue]💭 推理过程[/bold blue]",
+                                    border_style="bright_cyan",
+                                    expand=False,
+                                )
+                            )
                         elif hasattr(response, "usage"):
                             usage = response.usage
                             if hasattr(usage, "completion_tokens_details"):
                                 details = usage.completion_tokens_details
-                                if hasattr(details, "reasoning_tokens") and details.reasoning_tokens > 0:
+                                if (
+                                    hasattr(details, "reasoning_tokens")
+                                    and details.reasoning_tokens > 0
+                                ):
                                     logger.info(
                                         f"\n💭 推理tokens数: {details.reasoning_tokens}\n"
                                     )

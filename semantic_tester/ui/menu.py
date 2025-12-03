@@ -279,11 +279,13 @@ A: 确保知识库文档内容完整、准确，问题表述清晰
             prompt_suffix = "(y/N，默认: Y)"
         else:
             prompt_suffix = "(y/N，默认: N)"
-        
+
         while True:
             try:
                 response = (
-                    input(f"\n{Fore.YELLOW}{message} {prompt_suffix}: {Style.RESET_ALL}")
+                    input(
+                        f"\n{Fore.YELLOW}{message} {prompt_suffix}: {Style.RESET_ALL}"
+                    )
                     .lower()
                     .strip()
                 )

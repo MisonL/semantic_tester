@@ -279,13 +279,15 @@ class GeminiProvider(AIProvider):
                     from rich.panel import Panel
                     from rich.markdown import Markdown
                     from rich import print as rprint
-                    
-                    rprint(Panel(
-                        Markdown(thinking_content),
-                        title="[bold blue]💭 思维过程[/bold blue]",
-                        border_style="bright_cyan",
-                        expand=False
-                    ))
+
+                    rprint(
+                        Panel(
+                            Markdown(thinking_content),
+                            title="[bold blue]💭 思维过程[/bold blue]",
+                            border_style="bright_cyan",
+                            expand=False,
+                        )
+                    )
 
                 response_text = full_response.strip()
             else:

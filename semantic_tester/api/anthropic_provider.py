@@ -345,13 +345,15 @@ class AnthropicProvider(AIProvider):
                                     from rich.panel import Panel
                                     from rich.markdown import Markdown
                                     from rich import print as rprint
-                                    
-                                    rprint(Panel(
-                                        Markdown(thinking_content),
-                                        title="[bold blue]💭 Extended Thinking[/bold blue]",
-                                        border_style="bright_cyan",
-                                        expand=False
-                                    ))
+
+                                    rprint(
+                                        Panel(
+                                            Markdown(thinking_content),
+                                            title="[bold blue]💭 Extended Thinking[/bold blue]",
+                                            border_style="bright_cyan",
+                                            expand=False,
+                                        )
+                                    )
 
                     response_time = time.time() - start_time
                     text_content = full_response
@@ -399,13 +401,15 @@ class AnthropicProvider(AIProvider):
                                         from rich.panel import Panel
                                         from rich.markdown import Markdown
                                         from rich import print as rprint
-                                        
-                                        rprint(Panel(
-                                            Markdown(thinking_content),
-                                            title="[bold blue]💭 Extended Thinking[/bold blue]",
-                                            border_style="blue",
-                                            expand=False
-                                        ))
+
+                                        rprint(
+                                            Panel(
+                                                Markdown(thinking_content),
+                                                title="[bold blue]💭 Extended Thinking[/bold blue]",
+                                                border_style="blue",
+                                                expand=False,
+                                            )
+                                        )
 
                             # 提取文本内容
                             if TextBlock is not None and isinstance(

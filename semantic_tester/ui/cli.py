@@ -12,7 +12,6 @@ from typing import List, Optional
 from colorama import Fore, Style
 
 # 导入终端UI美化模块
-from semantic_tester.ui import terminal_ui
 from semantic_tester.ui.terminal_ui import (
     print_success,
     print_error,
@@ -21,11 +20,9 @@ from semantic_tester.ui.terminal_ui import (
     print_input_prompt,
     print_provider_table,
     print_file_table,
-    print_column_table,
     print_comparison_result_panel,
     print_summary_panel,
     confirm,
-    console,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,7 +110,9 @@ class CLIInterface:
                     if 0 <= provider_index < len(providers):
                         selected_id = providers[provider_index]["id"]
                         if provider_manager.set_current_provider(selected_id):
-                            print_success(f"已选择供应商: {providers[provider_index]['name']}")
+                            print_success(
+                                f"已选择供应商: {providers[provider_index]['name']}"
+                            )
                             return selected_id
                         else:
                             print_error("切换供应商失败，请重试")
@@ -227,7 +226,9 @@ class CLIInterface:
 
             os.environ["GEMINI_API_KEY"] = keys_input
             print_success("Gemini API 密钥已设置（当前会话有效）")
-            print_info("提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量")
+            print_info(
+                "提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量"
+            )
 
     @staticmethod
     def _configure_openai_keys(env_manager):
@@ -241,7 +242,9 @@ class CLIInterface:
 
             os.environ["OPENAI_API_KEY"] = api_key
             print_success("OpenAI API 密钥已设置（当前会话有效）")
-            print_info("提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量")
+            print_info(
+                "提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量"
+            )
 
     @staticmethod
     def _configure_dify_keys(env_manager):
@@ -255,7 +258,9 @@ class CLIInterface:
 
             os.environ["DIFY_API_KEY"] = api_key
             print_success("Dify API 密钥已设置（当前会话有效）")
-            print_info("提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量")
+            print_info(
+                "提示: 要永久保存，请在 .env.config 文件中配置或设置系统环境变量"
+            )
 
     @staticmethod
     def get_excel_file() -> str:
@@ -268,7 +273,7 @@ class CLIInterface:
         while True:
             # 每次循环都重新扫描目录，确保文件列表是最新的
             excel_files = CLIInterface._get_local_excel_files()
-            
+
             # 获取用户输入的文件路径
             excel_path = CLIInterface._get_user_file_input(excel_files)
             if excel_path is None:
@@ -307,11 +312,13 @@ class CLIInterface:
         if excel_files:
             # 使用更明确的标题说明这是问答记录表
             print_file_table(excel_files, title="问答记录表文件")
-            
+
             while True:
                 try:
-                    choice = print_input_prompt(f"请选择问答记录表序号 (1-{len(excel_files)}) 或直接输入文件路径")
-                    
+                    choice = print_input_prompt(
+                        f"请选择问答记录表序号 (1-{len(excel_files)}) 或直接输入文件路径"
+                    )
+
                     # 尝试解析为序号
                     try:
                         index = int(choice) - 1
@@ -321,11 +328,11 @@ class CLIInterface:
                             return selected_file
                     except ValueError:
                         pass
-                        
+
                     # 如果不是序号，则作为路径返回
                     if choice:
                         return choice
-                        
+
                 except KeyboardInterrupt:
                     print_warning("\n操作已取消")
                     sys.exit(0)
@@ -397,7 +404,7 @@ class CLIInterface:
                     return default_path
                 print_error("知识库目录路径不能为空。")
                 continue
-                
+
             if os.path.isdir(path):
                 print_success(f"已选择知识库目录: {path}")
                 return path
@@ -471,10 +478,12 @@ class CLIInterface:
         prompt_msg = "响应列"
         print_info(f"发现多个{prompt_msg}，请选择要使用的一个：")
         CLIInterface.print_column_table(response_cols)
-        
+
         while True:
             try:
-                choice = print_input_prompt(f"请选择 {prompt_msg} (1-{len(response_cols)})")
+                choice = print_input_prompt(
+                    f"请选择 {prompt_msg} (1-{len(response_cols)})"
+                )
                 index = int(choice) - 1
                 if 0 <= index < len(response_cols):
                     selected_col = response_cols[index]
@@ -507,7 +516,7 @@ class CLIInterface:
     def print_result_summary(total: int, processed: int, skipped: int, errors: int):
         """
         打印结果摘要
-        
+
         Args:
             total: 总记录数
             processed: 成功处理数
@@ -525,19 +534,28 @@ class CLIInterface:
         file_path: str,
         output_path: str,
         provider_name: str,
-        model_name: str
+        model_name: str,
     ):
         """
         打印详细结果摘要
         """
         from semantic_tester.ui.terminal_ui import print_detailed_summary_panel
+
         print_detailed_summary_panel(
-            total, processed, skipped, errors,
-            file_path, output_path, provider_name, model_name
+            total,
+            processed,
+            skipped,
+            errors,
+            file_path,
+            output_path,
+            provider_name,
+            model_name,
         )
 
     @staticmethod
-    def print_comparison_result(doc_name: str, question: str, ai_answer: str, result: str, reason: str):
+    def print_comparison_result(
+        doc_name: str, question: str, ai_answer: str, result: str, reason: str
+    ):
         """
         打印单个比对结果
 

@@ -683,11 +683,16 @@ class ExcelProcessor:
             # 检查是否为权限错误（通常是文件被占用）
             if "Permission denied" in str(e) or isinstance(e, PermissionError):
                 from semantic_tester.ui.terminal_ui import print_warning, confirm
-                print_warning(f"⚠️  无法保存文件 '{output_path}'。文件可能正在被其他程序（如Excel）占用。")
-                if confirm("请关闭文件后按回车重试 (输入 n 跳过本次保存)", default=True):
+
+                print_warning(
+                    f"⚠️  无法保存文件 '{output_path}'。文件可能正在被其他程序（如Excel）占用。"
+                )
+                if confirm(
+                    "请关闭文件后按回车重试 (输入 n 跳过本次保存)", default=True
+                ):
                     self.save_intermediate_results(output_path, processed_count)
                     return
-            
+
             logger.error(f"保存中间结果失败: {e}")
 
     def save_final_results(self, output_path: str):
@@ -707,16 +712,24 @@ class ExcelProcessor:
             # 检查是否为权限错误（通常是文件被占用）
             if "Permission denied" in str(e) or isinstance(e, PermissionError):
                 from semantic_tester.ui.terminal_ui import print_warning, confirm
-                print_warning(f"⚠️  无法保存文件 '{output_path}'。文件可能正在被其他程序（如Excel）占用。")
+
+                print_warning(
+                    f"⚠️  无法保存文件 '{output_path}'。文件可能正在被其他程序（如Excel）占用。"
+                )
                 # 最终结果保存失败，必须重试，否则数据丢失
                 while True:
-                    if confirm("请关闭文件后按回车重试 (输入 n 放弃保存 - 警告：数据将丢失！)", default=True):
+                    if confirm(
+                        "请关闭文件后按回车重试 (输入 n 放弃保存 - 警告：数据将丢失！)",
+                        default=True,
+                    ):
                         try:
                             self.df.to_excel(output_path, index=False)
                             logger.info(f"最终结果已保存到 {output_path}")
                             return
                         except Exception as retry_e:
-                            if "Permission denied" in str(retry_e) or isinstance(retry_e, PermissionError):
+                            if "Permission denied" in str(retry_e) or isinstance(
+                                retry_e, PermissionError
+                            ):
                                 print_warning("仍然无法保存，请确保文件已关闭。")
                             else:
                                 logger.error(f"重试保存失败: {retry_e}")
@@ -764,7 +777,7 @@ class ExcelProcessor:
         try:
             # 读取现有结果文件
             existing_df = pd.read_excel(output_path)
-            
+
             # 验证行数是否一致
             if len(existing_df) != len(self.df):
                 logger.warning(
@@ -784,16 +797,16 @@ class ExcelProcessor:
                 return 0
 
             loaded_count = 0
-            
+
             # 将现有结果合并到当前 DataFrame
             # 注意：这里假设行顺序一致，通过索引匹配
             for index in existing_df.index:
                 if index >= len(self.df):
                     break
-                    
+
                 similarity = existing_df.at[index, similarity_col_name]
                 reason = existing_df.at[index, reason_col_name]
-                
+
                 # 只有当结果不为空时才加载
                 if pd.notna(similarity) and str(similarity).strip() != "":
                     self.df.at[index, similarity_col_name] = similarity
@@ -822,13 +835,13 @@ class ExcelProcessor:
         """
         if self.df is None:
             return False
-            
+
         similarity_col_name = result_columns["similarity_result"][0]
-        
+
         # 检查列是否存在
         if similarity_col_name not in self.df.columns:
             return False
-            
+
         val = self.df.at[row_index, similarity_col_name]
         # 检查值是否非空且不是空字符串
         return pd.notna(val) and str(val).strip() != ""
@@ -836,23 +849,23 @@ class ExcelProcessor:
     def get_result(self, row_index: int, column_name: str) -> str:
         """
         获取指定行指定列的结果值
-        
+
         Args:
             row_index: 行索引
             column_name: 列名
-        
+
         Returns:
             str: 结果值，如果不存在返回空字符串
         """
         if self.df is None:
             return ""
-        
+
         # 检查列是否存在
         if column_name not in self.df.columns:
             return ""
-        
+
         val = self.df.at[row_index, column_name]
-        
+
         # 返回字符串值，如果为空或NaN返回空字符串
         if pd.notna(val):
             return str(val).strip()

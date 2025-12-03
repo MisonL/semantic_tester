@@ -17,37 +17,37 @@ class LoggerUtils:
     def _get_log_directory(log_dir: str) -> str:
         """
         获取日志目录路径，优先使用程序所在目录，否则使用用户主目录
-        
+
         Args:
             log_dir: 日志目录名称
-            
+
         Returns:
             str: 日志目录的绝对路径
         """
         # 尝试获取程序所在目录
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             # 打包后的程序
             app_dir = os.path.dirname(sys.executable)
         else:
             # 开发环境
             app_dir = os.getcwd()
-        
+
         # 首选：程序所在目录的logs文件夹
         preferred_log_dir = os.path.join(app_dir, log_dir)
-        
+
         # 测试是否有写入权限
         try:
             os.makedirs(preferred_log_dir, exist_ok=True)
             # 尝试写入测试文件
-            test_file = os.path.join(preferred_log_dir, '.write_test')
-            with open(test_file, 'w') as f:
-                f.write('test')
+            test_file = os.path.join(preferred_log_dir, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("test")
             os.remove(test_file)
             return preferred_log_dir
         except (OSError, PermissionError):
             # 如果没有写入权限，使用用户主目录
-            home_dir = os.path.expanduser('~')
-            fallback_log_dir = os.path.join(home_dir, '.semantic_tester', log_dir)
+            home_dir = os.path.expanduser("~")
+            fallback_log_dir = os.path.join(home_dir, ".semantic_tester", log_dir)
             os.makedirs(fallback_log_dir, exist_ok=True)
             return fallback_log_dir
 
@@ -92,13 +92,13 @@ class LoggerUtils:
 
         # 文件处理器 - 使用RotatingFileHandler实现日志轮转
         from logging.handlers import RotatingFileHandler
-        
+
         log_file_path = os.path.join(actual_log_dir, log_file)
         file_handler = RotatingFileHandler(
             log_file_path,
             maxBytes=max_bytes,
             backupCount=backup_count,
-            encoding="utf-8"
+            encoding="utf-8",
         )
         file_handler.setFormatter(file_formatter)
         file_handler.setLevel(level)
@@ -119,7 +119,9 @@ class LoggerUtils:
             root_logger.addHandler(console_handler)
 
         # 记录日志系统初始化信息
-        logging.info(f"日志系统已初始化：目录={actual_log_dir}, 级别={log_level}, 最大={max_bytes/1024/1024:.1f}MB, 备份={backup_count}")
+        logging.info(
+            f"日志系统已初始化：目录={actual_log_dir}, 级别={log_level}, 最大={max_bytes/1024/1024:.1f}MB, 备份={backup_count}"
+        )
 
     @staticmethod
     def get_logger(name: str) -> logging.Logger:
@@ -232,9 +234,9 @@ class LoggerUtils:
         from rich.text import Text
         from rich import box
         from semantic_tester import __version__, __author__, __email__, __license__
-        
+
         console = Console()
-        
+
         # 创建信息文本
         info_text = Text()
         # info_text.append("\n")  # 移除空行分隔
@@ -247,14 +249,15 @@ class LoggerUtils:
         info_text.append("邮箱: ", style="bold yellow")
         info_text.append(f"{__email__}\n", style="cyan")
         info_text.append("项目: ", style="bold yellow")
-        info_text.append("https://github.com/MisonL/semantic_tester\n", style="bright_cyan underline")
-        
+        info_text.append(
+            "https://github.com/MisonL/semantic_tester\n", style="bright_cyan underline"
+        )
+
         # 组合内容
         from rich.console import Group
-        panel_content = Group(
-            info_text
-        )
-        
+
+        panel_content = Group(info_text)
+
         # 创建面板
         panel = Panel(
             panel_content,
@@ -264,7 +267,7 @@ class LoggerUtils:
             width=55,
             expand=False,
         )
-        
+
         console.print()
         console.print(panel)
         console.print()

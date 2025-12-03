@@ -40,11 +40,15 @@ class EnvManager:
             List[str]: API 密钥列表
         """
         # 优先从环境变量获取（支持 GEMINI_API_KEY / GEMINI_API_KEYS 两种命名）
-        gemini_api_keys_str = os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEYS")
+        gemini_api_keys_str = os.getenv("GEMINI_API_KEY") or os.getenv(
+            "GEMINI_API_KEYS"
+        )
 
         # 如果环境变量不存在，尝试从 .env.config 文件获取
         if not gemini_api_keys_str:
-            gemini_api_keys_str = self.env_loader.get_str("GEMINI_API_KEY") or self.env_loader.get_str("GEMINI_API_KEYS")
+            gemini_api_keys_str = self.env_loader.get_str(
+                "GEMINI_API_KEY"
+            ) or self.env_loader.get_str("GEMINI_API_KEYS")
             if gemini_api_keys_str:
                 logger.info("从 .env.config 文件加载 Gemini API 密钥")
 
@@ -321,7 +325,7 @@ class EnvManager:
         use_full_doc_match = os.getenv("USE_FULL_DOC_MATCH")
         if use_full_doc_match is not None:
             return use_full_doc_match.lower() in ("true", "1", "yes", "on")
-        
+
         # 从 .env.config 文件获取
         return self.env_loader.get_bool("USE_FULL_DOC_MATCH", False)
 
@@ -432,7 +436,6 @@ class EnvManager:
         # 记录摘要
         if configured_suppliers:
             logger.info(f"✅ 已配置供应商: {', '.join(configured_suppliers)}")
-
 
         if total_template_keys > 0:
             # 改为 debug 级别，避免启动时刷屏干扰美观

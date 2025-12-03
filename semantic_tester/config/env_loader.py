@@ -208,7 +208,9 @@ class EnvLoader:
         print(f"AI供应商: {', '.join([p['name'] for p in ai_providers])}")
 
         # 支持 GEMINI_API_KEY / GEMINI_API_KEYS 两种命名
-        gemini_keys = self.get_list("GEMINI_API_KEY") or self.get_list("GEMINI_API_KEYS")
+        gemini_keys = self.get_list("GEMINI_API_KEY") or self.get_list(
+            "GEMINI_API_KEYS"
+        )
         print(
             f"Gemini API密钥: {'已配置' if gemini_keys else '未配置'} ({len(gemini_keys)} 个)"
         )
