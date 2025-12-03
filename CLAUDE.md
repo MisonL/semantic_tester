@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-多 AI 供应商客服问答语义比对工具，支持 Gemini、OpenAI、Anthropic、Dify、iFlow 五大供应商，通过标准化 API 接口评估 AI 客服回答与源知识库文档的语义相符性。当前版本 v2.5+采用模块化架构，100%类型安全，企业级生产就绪。
+多 AI 供应商客服问答语义比对工具，支持 Gemini、OpenAI、Anthropic、Dify、iFlow 五大供应商，通过标准化 API 接口评估 AI 客服回答与源知识库文档的语义相符性。当前版本 v3.0.0采用模块化架构，100%类型安全，企业级生产就绪。
 
 ## 常用命令
 
@@ -49,6 +49,10 @@ uv run pytest tests/test_api.py -v
 # 构建包
 uv build
 
+# 跨平台打包
+./build/build_macos.sh            # macOS 打包
+./build/build_windows.bat         # Windows 打包
+
 # 类型检查
 mypy semantic_tester/ --ignore-missing-imports
 ```
@@ -83,11 +87,11 @@ main.py (应用入口) → semantic_tester/ (核心包)
 
 **供应商管理器**: `ProviderManager` 统一管理 5 大 AI 供应商：
 
-- Gemini: 多密钥轮转，429 错误处理，智能冷却
-- OpenAI: 标准 API 接口，GPT 模型支持
-- Anthropic: Claude API 集成，最新模型支持
+- Gemini: 多密钥轮转，429 错误处理，智能冷却，流式响应支持
+- OpenAI: 标准 API 接口，GPT 模型支持，流式输出兼容
+- Anthropic: Claude API 集成，最新模型支持，思维链显示
 - Dify: 聊天客户端测试工具专用，私有化部署支持
-- iFlow: 国产 AI 厂商，千问、月之暗面、智谱等
+- iFlow: 国产 AI 厂商，千问、月之暗面、智谱等，流式响应支持
 
 **配置一致性**: 所有供应商通过 `base_provider.py` 实现统一的错误处理、日志记录、等待提示机制。
 
@@ -164,6 +168,43 @@ export IFLOW_MODEL='qwen3-max'
 2. 环境变量
 3. 交互式配置 (临时)
 
+## v3.0.0 版本新特性
+
+### AI 提示词自定义配置
+
+支持通过 `SEMANTIC_CHECK_PROMPT` 环境变量自定义语义评估提示词：
+
+```bash
+export SEMANTIC_CHECK_PROMPT='请根据以下内容评估AI客服回答与源文档的语义相符性...
+
+问题：{question}
+AI回答：{ai_answer}
+源文档：{source_document}
+
+请判断：AI回答是否与源文档语义相符？回答"是"或"否"，并说明判断依据。'
+```
+
+**占位符支持**：
+- `{question}`: 用户问题内容
+- `{ai_answer}`: AI客服回答内容
+- `{source_document}`: 源知识库文档内容
+
+### 流式输出与思维链显示
+
+所有供应商支持流式响应输出，实时显示AI处理过程：
+
+- **实时流式输出**: 逐字符显示AI响应，提升用户体验
+- **思维链提取**: 智能识别并显示AI的推理过程
+- **内容分离**: 自动区分思考过程和最终结论
+- **供应商兼容**: Gemini、OpenAI、Anthropic、iFlow均支持流式响应
+
+### 增强的Excel处理能力
+
+- **增量保存优化**: 每条记录处理完成后立即保存，防止数据丢失
+- **合并单元格支持**: 安全处理复杂Excel布局
+- **格式自动适配**: 智能识别不同数据源格式
+- **错误恢复机制**: 处理失败时保留已处理数据
+
 ## Excel 数据格式
 
 ### 输入要求 (列名可配置)
@@ -213,6 +254,8 @@ export IFLOW_MODEL='qwen3-max'
 - 配置变更通过`config/`模块管理，支持持久化存储
 - 添加新供应商时继承`AIProvider`基类，实现所有抽象方法
 - 模型名称必须符合各供应商的官方规范，注意格式差异
+- 流式响应实现需要在 `check_semantic_similarity` 方法中处理 `stream=True` 参数
+- 自定义提示词功能通过环境变量 `SEMANTIC_CHECK_PROMPT` 配置，支持占位符替换
 
 ## API 供应商接口规范
 

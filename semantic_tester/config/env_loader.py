@@ -104,7 +104,26 @@ class EnvLoader:
             except Exception as e:
                 logger.error(f"创建配置文件失败: {e}")
         else:
-            logger.warning(f"模板文件 {example_file} 不存在，无法创建默认配置")
+            # 如果找不到模板文件，则基于内置默认配置生成一个简单的配置文件
+            logger.warning(
+                f"模板文件 {example_file} 不存在，将使用内置默认配置生成 {config_file_path}"
+            )
+            try:
+                # 先加载内置默认配置到 self.config
+                self._load_defaults()
+
+                # 写入一个可编辑的基础配置文件
+                with open(config_file_path, "w", encoding="utf-8") as dst:
+                    dst.write(
+                        "# 自动生成的默认配置文件\n"
+                        "# 请根据需要修改相关配置项，尤其是各个 API 的密钥\n\n"
+                    )
+                    for key, value in self.config.items():
+                        dst.write(f"{key}={value}\n")
+
+                logger.info(f"已基于内置默认配置创建配置文件: {config_file_path}")
+            except Exception as e:
+                logger.error(f"基于默认配置创建配置文件失败: {e}")
 
     def _load_defaults(self):
         """加载默认配置"""

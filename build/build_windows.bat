@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ==========================================
@@ -91,19 +92,24 @@ echo Creating compressed package...
 
 cd /d "%PROJECT_DIR%"
 
+REM Ensure empty kb-docs directory exists in release
+if not exist "%PROJECT_DIR%\release_windows\kb-docs" (
+    mkdir "%PROJECT_DIR%\release_windows\kb-docs"
+)
+
+REM Copy unified user guide
+if exist "%PROJECT_DIR%\docs\用户使用指南.md" (
+    copy /Y "%PROJECT_DIR%\docs\用户使用指南.md" "%PROJECT_DIR%\release_windows\用户使用指南.md" >nul
+) else (
+    echo Warning: docs\用户使用指南.md not found, user guide will not be included.
+)
+
 REM Create ZIP archive (Python script handles file copying and zipping)
 echo Creating ZIP archive...
 py "%SCRIPT_DIR%create_release_zip.py"
 
 echo.
-echo Usage instructions:
-echo 1. Extract semantic_tester_windows_v*.zip
-echo 2. Copy .env.config.example to .env.config
-echo 3. Edit .env.config to configure API information
-echo 4. Prepare knowledge base documents (in kb-docs directory)
-echo 5. Double-click semantic_tester.exe to start the program
-echo.
-echo Packaging complete!
+echo Packaging complete! Please refer to "用户使用指南.md" in the extracted folder for detailed usage on Windows and macOS.
 
 REM Clean up temporary build directories
 echo Cleaning up temporary files...

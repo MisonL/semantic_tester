@@ -135,6 +135,14 @@ pip install -r requirements.txt
 
 #### 方法一：使用 .env.config 文件（推荐）
 
+> 首次运行程序或解压打包版本时，如果当前目录不存在 `.env.config`，程序会自动：
+> - 优先复制 `.env.config.example` 生成 `.env.config`
+> - 若模板缺失，则根据内置默认配置生成一个 `.env.config`
+>
+> 因此，**一般只需要直接编辑自动生成的 `.env.config` 即可。**
+
+如需手动创建或重置配置文件：
+
 1. 复制配置模板：`cp .env.config.example .env.config`
 2. 编辑 `.env.config` 文件，配置您的 API 密钥：
 

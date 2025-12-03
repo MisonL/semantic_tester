@@ -40,15 +40,23 @@ def create_release_zip():
     os.makedirs(release_dir, exist_ok=True)
 
     # 1. Copy executable
+    # 优先从 release_windows 目录获取（与 build_windows.bat 的 --distpath 保持一致）
+    exe_source_primary = os.path.join(release_dir, "semantic_tester.exe")
     dist_dir = os.path.join(project_dir, "dist")
-    exe_source = os.path.join(dist_dir, "semantic_tester.exe")
+    exe_source_fallback = os.path.join(dist_dir, "semantic_tester.exe")
     exe_path = os.path.join(release_dir, "semantic_tester.exe")
 
-    if os.path.exists(exe_source):
-        shutil.copy2(exe_source, exe_path)
-        print("  Copied semantic_tester.exe")
+    if os.path.exists(exe_source_primary):
+        # 已经在 release_windows 中，无需再次复制，只做存在性校验
+        print("  Found semantic_tester.exe in release_windows")
+    elif os.path.exists(exe_source_fallback):
+        # 兼容旧流程：从 dist 复制到 release_windows
+        shutil.copy2(exe_source_fallback, exe_path)
+        print("  Copied semantic_tester.exe from dist to release_windows")
     else:
-        print(f"  Warning: Executable not found at {exe_source}")
+        print(
+            f"  Warning: Executable not found in release_windows or dist (checked: {exe_source_primary}, {exe_source_fallback})"
+        )
 
     # 2. Copy config template
     config_src = os.path.join(project_dir, ".env.config.example")

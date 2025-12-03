@@ -6,6 +6,8 @@
 
 通过调用多个 AI 供应商 API（Gemini、OpenAI、Dify、Anthropic、iFlow），对给定的问题、AI 客服回答和源文档内容进行比对，判断 AI 客服的回答是否能够从源文档中合理推断，或是否与源文档的核心信息一致。
 
+**版本**: 3.0.0 - 生产就绪版本，包含流式输出、思维链支持和 AI 提示词自定义功能
+
 ## 核心特性
 
 ### 🧠 多供应商智能语义比对
@@ -37,6 +39,20 @@
 - **配置管理**: 支持配置文件持久化和用户自定义设置
 - **多种运行模式**: 交互式菜单模式和命令行快速处理模式
 
+### 🌊 流式输出与思维链支持 (v3.0.0+)
+
+- **实时流式输出**: 所有 AI 供应商支持流式响应，实时显示处理进度
+- **思维链显示**: 支持显示 AI 的思考过程，了解评估逻辑
+- **智能内容提取**: 自动分离思考过程和最终结论
+- **用户可控**: 用户可选择是否启用流式输出和思维链显示
+
+### 🎨 AI 提示词自定义 (v3.0.0+)
+
+- **自定义语义检查**: 通过 `.env.config` 自定义语义判断标准
+- **占位符支持**: 支持 `{question}`, `{ai_answer}`, `{source_document}` 占位符
+- **灵活判断标准**: 可根据需求调整更严格/更宽松/特定领域的判断规则
+- **配置文档**: 详细的自定义配置指南 (`docs/AI_PROMPT_CONFIG.md`)
+
 ### 🛡️ 类型安全 (v2.5+)
 
 - **100% 类型安全**: 所有 Pylance 警告已修复
@@ -56,6 +72,8 @@
 - **requests**: HTTP 请求库
 - **python-dotenv**: 环境变量管理
 - **colorama**: 终端彩色输出
+- **rich**: 富文本终端显示 (v3.0.0+ 新增)
+- **google-api-core**: Google API 核心库
 
 ### 开发工具
 
@@ -63,6 +81,7 @@
 - **pytest**: 测试框架
 - **black**: 代码格式化
 - **flake8**: 代码检查
+- **pyinstaller**: 应用打包工具 (v3.0.0+ 新增)
 
 ## 项目架构
 
@@ -80,6 +99,7 @@ semantic_tester/
 │   ├── anthropic_provider.py # Anthropic供应商实现
 │   ├── dify_provider.py     # Dify供应商实现
 │   ├── iflow_provider.py    # iFlow供应商实现
+│   ├── prompts.py           # AI 提示词管理 (v3.0.0+ 新增)
 │   └── gemini_handler.py    # 传统Gemini处理器（向后兼容）
 ├── config/                  # 配置管理层
 │   ├── env_loader.py        # 环境变量加载器
@@ -147,6 +167,9 @@ semantic_tester/
 - `IFLOW_API_KEY`: iFlow API 密钥
 - `LOG_LEVEL`: 日志级别
 - `BATCH_REQUEST_INTERVAL`: 批量请求间隔
+- `USE_FULL_DOC_MATCH`: 全量文档匹配模式 (v3.0.0+ 新增)
+- `ENABLE_THINKING`: 是否默认开启思维链 (v3.0.0+ 新增)
+- `SEMANTIC_CHECK_PROMPT`: 自定义语义检查提示词 (v3.0.0+ 新增)
 
 ### 配置优先级
 
@@ -181,6 +204,9 @@ uv run python -m semantic_tester
 
 # 命令行模式
 uv run python main.py 问答测试用例.xlsx 处理后/
+
+# 使用脚本命令 (v3.0.0+ 新增)
+semantic-tester
 ```
 
 ### 代码规范
@@ -286,7 +312,38 @@ A: 取决于配置的供应商和 API 密钥权限，程序会自动获取可用
 
 ## 版本历史
 
-### v2.5+ (当前版本)
+### v3.0.0 (当前版本)
+
+- 🆕 **UI 交互优化**:
+  - 统一终端界面风格，优化确认提示（默认 Y/N）
+  - 改进流式输出显示逻辑，优先展示问题与简略回答，随后展示思考过程
+  - 语义比对结果面板新增 AI 回答内容显示
+- ⚡ **性能提升**:
+  - 优化启动流程，实现模块懒加载，显著提升启动速度
+  - 新增启动加载动画，提升用户体验
+- 🛠️ **工程优化**:
+  - 完善 `.gitignore` 配置（忽略 `kb-docs` 等）
+  - 修复 `main.py` 语法问题
+  - 集成 `rich` 库增强终端显示效果
+- 🎨 **AI 提示词自定义**:
+  - 支持通过 `.env.config` 配置文件自定义语义检查提示词
+  - 新增 `SEMANTIC_CHECK_PROMPT` 配置项
+  - 支持占位符替换：`{question}`, `{ai_answer}`, `{source_document}`
+  - 用户可根据需求调整判断标准（更严格/更宽松/特定领域）
+  - 详细配置文档：`docs/AI_PROMPT_CONFIG.md`
+- 🌊 **流式输出和思维链支持**:
+  - 所有 AI 供应商支持流式响应
+  - 支持显示 AI 思考过程
+  - 用户可选择启用/禁用流式输出和思维链
+  - 详细文档：`docs/STREAMING_AND_THINKING_SUPPORT.md`
+- ✅ **原有特性 (v2.5+)**:
+  - 完成模块化重构
+  - 100% 类型安全 (Pylance 警告全部修复)
+  - 代码质量达到生产标准
+  - 多 AI 供应商支持 (Gemini, OpenAI, Dify, iFlow)
+  - 统一供应商管理与灵活配置系统
+
+### v2.5+
 
 - ✅ 完成模块化重构
 - ✅ 100% 类型安全 (Pylance 警告全部修复)
@@ -321,7 +378,35 @@ A: 取决于配置的供应商和 API 密钥权限，程序会自动获取可用
 - **邮箱**: 1360962086@qq.com
 - **GitHub**: https://github.com/MisonL
 
+## 打包与分发
+
+### 构建可执行文件
+
+项目支持使用 PyInstaller 打包为独立可执行文件：
+
+```bash
+# macOS 构建
+./build/build_macos.sh
+
+# Windows 构建
+./build/build_windows.bat
+
+# 手动构建 (跨平台)
+python build/create_release_zip.py
+```
+
+### 构建产物
+
+- **macOS**: `semantic_tester_macos_v{version}_{timestamp}.zip`
+- **Windows**: `semantic_tester_windows_v{version}_{timestamp}.zip`
+
+构建产物包含：
+- 独立可执行文件
+- 配置文件模板
+- 使用说明文档
+
 ---
 
-**最后更新**: 2025 年 11 月 20 日
+**最后更新**: 2025 年 12 月 3 日
 **项目状态**: ✅ 生产就绪 - 代码质量达到企业级标准
+**当前版本**: v3.0.0 - 包含流式输出、思维链支持和 AI 提示词自定义功能
