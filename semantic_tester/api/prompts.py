@@ -1,7 +1,10 @@
 """
 统一的提示词定义
+
+注意：提示词现在可以通过 .env.config 文件配置
 """
 
+# 默认语义检查提示词（当配置文件中没有配置时使用）
 SEMANTIC_CHECK_PROMPT = """请判断以下AI客服回答与源知识库文档内容在语义上是否相符。
 
 判断标准：
@@ -34,3 +37,18 @@ AI客服回答：
 ---
 
 请直接返回JSON格式结果，不要包含其他内容。记住：result 字段只能是这四个值之一："是"、"否"、"错误"、"不确定"。"""
+
+
+def get_semantic_check_prompt(env_manager=None) -> str:
+    """
+    获取语义检查提示词
+
+    Args:
+        env_manager: 环境管理器实例（可选）
+
+    Returns:
+        str: 语义检查提示词
+    """
+    if env_manager and hasattr(env_manager, "get_semantic_check_prompt"):
+        return env_manager.get_semantic_check_prompt()
+    return SEMANTIC_CHECK_PROMPT

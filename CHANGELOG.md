@@ -13,6 +13,12 @@
   - 完善 `.gitignore` 配置（忽略 `kb-docs` 等）
   - 修复 `main.py` 语法问题
   - 集成 `rich` 库增强终端显示效果
+- 🎨 **AI 提示词自定义** (新功能):
+  - 支持通过 `.env.config` 配置文件自定义语义检查提示词
+  - 新增 `SEMANTIC_CHECK_PROMPT` 配置项
+  - 支持占位符替换：`{question}`, `{ai_answer}`, `{source_document}`
+  - 用户可根据需求调整判断标准（更严格/更宽松/特定领域）
+  - 详细配置文档：`AI_PROMPT_CONFIG.md`
 - ✅ **原有特性 (v2.5+)**:
   - 完成模块化重构
   - 100% 类型安全 (Pylance 警告全部修复)

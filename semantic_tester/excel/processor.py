@@ -421,9 +421,9 @@ class ExcelProcessor:
         Returns:
             Dict[str, Tuple[str, int]]: 结果列配置，包含列名和索引
         """
-        assert (
-            self.df is not None
-        ), "DataFrame must be loaded before getting result columns"
+        assert self.df is not None, (
+            "DataFrame must be loaded before getting result columns"
+        )
 
         # 如果是自动配置模式，直接使用默认列名
         if auto_config and self.is_dify_format:
@@ -529,9 +529,9 @@ class ExcelProcessor:
         Args:
             auto_config: 是否使用自动配置
         """
-        assert (
-            self.df is not None
-        ), "DataFrame must be loaded before suggesting document names"
+        assert self.df is not None, (
+            "DataFrame must be loaded before suggesting document names"
+        )
 
         if "文档名称" not in self.column_names:
             return
@@ -586,9 +586,9 @@ class ExcelProcessor:
         Args:
             result_columns: 结果列配置
         """
-        assert (
-            self.df is not None
-        ), "DataFrame must be loaded before setting up result columns"
+        assert self.df is not None, (
+            "DataFrame must be loaded before setting up result columns"
+        )
         similarity_col_name = result_columns["similarity_result"][0]
         reason_col_name = result_columns["reason"][0]
 
@@ -671,9 +671,9 @@ class ExcelProcessor:
             output_path: 输出文件路径
             processed_count: 已处理的记录数
         """
-        assert (
-            self.df is not None
-        ), "DataFrame must be loaded before saving intermediate results"
+        assert self.df is not None, (
+            "DataFrame must be loaded before saving intermediate results"
+        )
         try:
             self.df.to_excel(output_path, index=False)
             logger.info(
@@ -702,9 +702,9 @@ class ExcelProcessor:
         Args:
             output_path: 输出文件路径
         """
-        assert (
-            self.df is not None
-        ), "DataFrame must be loaded before saving final results"
+        assert self.df is not None, (
+            "DataFrame must be loaded before saving final results"
+        )
         try:
             self.df.to_excel(output_path, index=False)
             logger.info(f"最终结果已保存到 {output_path}")

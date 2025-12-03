@@ -120,7 +120,7 @@ class LoggerUtils:
 
         # 记录日志系统初始化信息
         logging.info(
-            f"日志系统已初始化：目录={actual_log_dir}, 级别={log_level}, 最大={max_bytes/1024/1024:.1f}MB, 备份={backup_count}"
+            f"日志系统已初始化：目录={actual_log_dir}, 级别={log_level}, 最大={max_bytes / 1024 / 1024:.1f}MB, 备份={backup_count}"
         )
 
     @staticmethod

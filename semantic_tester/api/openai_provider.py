@@ -139,7 +139,6 @@ class OpenAIProvider(AIProvider):
         default_retry_delay = 30
 
         for attempt in range(max_retries):
-
             # 创建等待指示器
             stop_event = threading.Event()
             waiting_thread = threading.Thread(

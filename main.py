@@ -1139,7 +1139,9 @@ class SemanticTestApp:
             status_icon = (
                 "✅"
                 if result["valid"]
-                else "❌" if result["status"] == "验证失败" else "⚠️"
+                else "❌"
+                if result["status"] == "验证失败"
+                else "⚠️"
             )
             print(f"\n{status_icon} {result['name']}")
             # 优化状态描述

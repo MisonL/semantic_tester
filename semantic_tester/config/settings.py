@@ -153,7 +153,9 @@ class Config:
         current_display = (
             "是"
             if current_value
-            else "否" if isinstance(current_value, bool) else str(current_value)
+            else "否"
+            if isinstance(current_value, bool)
+            else str(current_value)
         )
 
         user_input = input(f"{prompt} (当前: {current_display}): ").strip()
@@ -162,15 +164,13 @@ class Config:
             return False  # 用户没有输入，保持原值
 
         # 根据设置类型转换输入值
-        field_type = type(getattr(self.settings, key))
-
         try:
             new_value: Any = None
-            if field_type == bool:
+            if isinstance(current_value, bool):
                 new_value = user_input.lower() in ["y", "yes", "是", "true", "1"]
-            elif field_type == int:
+            elif isinstance(current_value, int):
                 new_value = int(user_input)
-            elif field_type == str:
+            elif isinstance(current_value, str):
                 new_value = user_input
             else:
                 new_value = user_input

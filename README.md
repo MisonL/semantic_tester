@@ -52,7 +52,7 @@
 - 详细的运行日志输出到 `logs/semantic_test.log` 文件
 - 控制台实时显示处理进度和关键信息
 
-### 🏗️ 模块化架构 (v2.0+)
+### 🏗️ 模块化架构 (v3.0.0)
 
 - **清晰的模块分离**: API、Excel、UI、配置、工具模块独立
 - **易于维护和扩展**: 每个模块职责单一，便于功能扩展
@@ -66,7 +66,7 @@
 - **智能列映射**: 自动适配列映射（原始问题 → 问题点，{供应商名称}响应 →AI 客服回答）
 - **无缝数据流**: 无需格式转换，直接使用 Dify 输出文件
 
-### 🛡️ 类型安全 (v2.5+)
+### 🛡️ 类型安全 (v3.0.0)
 
 - **100% 类型安全**: 所有 Pylance 警告已修复
 - **完善的类型注解**: 使用现代 Python 类型系统
@@ -98,7 +98,7 @@
 
 ### iFlow API（推荐）
 
-1. **访问 iFlow 平台**：[https://iflow.cn](https://iflow.cn)
+1. **访问 iFlow 平台**：[https://platform.iflow.cn/profile?tab=apiKey](https://platform.iflow.cn/profile?tab=apiKey)
 2. **注册账户并获取 API 密钥**：从控制台获取 iFlow API 密钥
 3. **支持的模型**：qwen3-max、kimi-k2-0905、glm-4.6、deepseek-v3.2 等
 4. **推荐理由**：稳定性好、响应速度快、支持多种主流模型
@@ -158,7 +158,40 @@ ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 IFLOW_API_KEY=sk-your-iflow-key
 IFLOW_MODEL=qwen3-max
 IFLOW_BASE_URL=https://apis.iflow.cn/v1
+
+# === 其他配置 ===
+ENABLE_THINKING=true  # 是否显示 AI 思考过程 (默认: true)
+
+# AI 提示词自定义 (可选)
+# 可自定义语义检查提示词，支持占位符: {question} {ai_answer} {source_document}
+SEMANTIC_CHECK_PROMPT=请判断以下AI客服回答与源知识库文档内容在语义上是否相符。判断标准：...
 ```
+
+#### 💡 AI 提示词自定义（高级功能）
+
+本工具支持自定义语义检查提示词，您可以根据需求调整 AI 的判断标准和行为：
+
+**配置方式：**
+在 `.env.config` 文件中设置 `SEMANTIC_CHECK_PROMPT` 参数。
+
+**使用场景：**
+
+- 🔍 **更严格的判断**：要求 AI 更严格地匹配源文档
+- 🎯 **更宽松的判断**：允许合理的语义推断
+- 🌐 **多语言支持**：使用英文或其他语言的提示词
+- 📋 **特定领域**：针对特定行业添加专业判断标准
+
+**示例：**
+
+```ini
+# 更严格的判断标准
+SEMANTIC_CHECK_PROMPT=你是一个严格的质量检查员。请非常严格地判断AI回答是否与源文档完全一致...
+
+# 更宽松的判断标准
+SEMANTIC_CHECK_PROMPT=你是一个友好的质量审核员。请判断AI回答是否与源文档的核心意思一致...
+```
+
+详细配置说明请参考：[AI_PROMPT_CONFIG.md](docs/AI_PROMPT_CONFIG.md)
 
 #### 方法二：环境变量
 
@@ -246,7 +279,7 @@ uv run python main.py  # 选择 Dify 输出文件，程序会自动检测格式
 
 ## 🏗️ 项目架构
 
-### 模块化结构 (v2.0+)
+### 模块化结构 (v3.0.0)
 
 ```
 semantic_tester/
@@ -294,11 +327,12 @@ semantic_tester/
 
 ## ⚠️ 注意事项
 
-1. **API Key 配置**：请确保您的 Gemini API 密钥正确且已启用 Gemini API 服务
+1. **API Key 配置**：请确保您的 API 密钥正确且已启用相应服务 (Gemini/OpenAI/Dify/iFlow)
 2. **网络连接**：确保程序运行环境网络连接正常
 3. **Excel 文件格式**：请确保输入的 Excel 文件格式正确，`文档名称`、`问题点` 和 `AI客服回答` 列的数据有效
 4. **知识库文档**：确保 `处理后/` 目录下存在与 Excel 中 `文档名称` 对应的 Markdown 文件
 5. **数据安全**：程序会实时保存 Excel 文件的处理进度，以防意外中断导致数据丢失
+6. **思维链显示**：默认开启 AI 思考过程显示，可通过 `.env.config` 中的 `ENABLE_THINKING` 参数关闭
 
 ## 📈 版本历史
 
