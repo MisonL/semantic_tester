@@ -135,6 +135,11 @@ export GEMINI_MODEL='models/gemini-2.5-flash'
 
 ### Dify Chat Tester 输出格式
 
+> 注意：本节描述的是 **批量对话日志 Excel**，文件名形如 `batch_query_log_YYYYMMDD_HHMMSS.xlsx`，
+> 这是 Semantic Tester 用于语义评估的唯一输入格式。v1.3.1 新增的
+> `question_generation_*.xlsx` / `cross_knowledge_questions_*.xlsx` 为“问题集构建”中间产物，
+> 不能直接作为语义评估输入使用。
+
 | 列名 | 数据类型 | 说明 | 示例 |
 |------|----------|------|------|
 | 时间戳 | DateTime | 记录处理时间 | 2025-11-18 16:24:25 |

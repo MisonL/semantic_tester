@@ -58,3 +58,6 @@ release_windows/
 *.zip
 *.dmg
 *.exe
+
+# Build scripts
+build/publish_release.sh

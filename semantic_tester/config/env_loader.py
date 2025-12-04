@@ -44,18 +44,75 @@ class EnvLoader:
             self._read_config_file(config_file_path)
 
     def _read_config_file(self, config_file_path: str):
-        """从指定路径读取配置文件"""
+        """从指定路径读取配置文件
+
+        支持两种形式的配置：
+        1. 单行键值：KEY=value
+        2. 使用三引号包裹的多行值：KEY="""..."""
+
+        示例：
+
+        SEMANTIC_CHECK_PROMPT="""
+        这里可以写多行提示词内容
+        支持换行，读取时会原样保留
+        """
+        """
+        multiline_key: str | None = None
+        multiline_buffer: list[str] = []
+
         try:
             with open(config_file_path, "r", encoding="utf-8") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line or line.startswith("#"):
+                for line_num, raw_line in enumerate(f, 1):
+                    line = raw_line.rstrip("\n")
+                    stripped = line.strip()
+
+                    # 多行值收集阶段
+                    if multiline_key is not None:
+                        # 查找结束标记 """
+                        if '"""' in stripped:
+                            end_idx = line.find('"""')
+                            content_part = line[:end_idx]
+                            if content_part:
+                                multiline_buffer.append(content_part)
+                            # 合并为最终值（保留原始换行）
+                            self.config[multiline_key] = "\n".join(multiline_buffer)
+                            multiline_key = None
+                            multiline_buffer = []
+                        else:
+                            multiline_buffer.append(line)
                         continue
-                    if "=" in line:
-                        key, value = line.split("=", 1)
-                        self.config[key.strip()] = value.strip()
-                    else:
-                        logger.warning(f"配置文件第 {line_num} 行格式错误: {line}")
+
+                    # 跳过空行和注释
+                    if not stripped or stripped.startswith("#"):
+                        continue
+
+                    if "=" not in line:
+                        logger.warning(
+                            f"配置文件第 {line_num} 行格式错误(缺少 '='): {line}"
+                        )
+                        continue
+
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value_stripped = value.lstrip()
+
+                    # 多行值起始：KEY=""" ...
+                    if value_stripped.startswith('"""'):
+                        after = value_stripped[3:]
+                        # 同一行就结束：KEY="""single line"""
+                        if '"""' in after:
+                            end_idx = after.find('"""')
+                            content = after[:end_idx]
+                            self.config[key] = content
+                        else:
+                            multiline_key = key
+                            multiline_buffer = []
+                            if after:
+                                multiline_buffer.append(after)
+                        continue
+
+                    # 普通单行键值
+                    self.config[key] = value_stripped.strip()
         except Exception as e:
             logger.error(f"读取配置文件失败: {e}")
             self._load_defaults()
