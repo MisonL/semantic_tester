@@ -39,12 +39,20 @@ logger = logging.getLogger(__name__)
 class SemanticTestApp:
     """语义测试应用主类"""
 
-    def __init__(self):
-        """初始化应用"""
-        self.env_manager = EnvManager()
-        self.config = Config()
-        # Legacy handlers removed, using ProviderManager only
-        self.provider_manager: Optional["ProviderManager"] = None  # 新的多供应商管理器
+    def __init__(
+        self,
+        env_manager: Optional["EnvManager"] = None,
+        config: Optional["Config"] = None,
+    ):
+        """初始化应用
+
+        Args:
+            env_manager: 环境管理器实例（可选，默认创建新实例）
+            config: 配置实例（可选，默认创建新实例）
+        """
+        self.env_manager = env_manager if env_manager is not None else EnvManager()
+        self.config = config if config is not None else Config()
+        self.provider_manager: Optional["ProviderManager"] = None
         self.excel_processor: Optional["ExcelProcessor"] = None
 
     def initialize(self) -> bool:
@@ -556,9 +564,6 @@ class SemanticTestApp:
             if current_provider:
                 provider_name = current_provider.name
                 model_name = getattr(current_provider, "model", "默认模型")
-        elif self.api_handler:
-            provider_name = "Gemini (Legacy)"
-            model_name = self.api_handler.model_name
 
         CLIInterface.print_detailed_result_summary(
             total=total_records,
@@ -890,7 +895,7 @@ class SemanticTestApp:
         enable_stream = getattr(self, "enable_stream", False)
         enable_thinking = getattr(self, "enable_thinking", True)
 
-        # 优先使用新的供应商管理器，保持向后兼容
+        # 使用供应商管理器
         if self.provider_manager:
             return self.provider_manager.check_semantic_similarity(
                 question=row_data["question"],
@@ -898,16 +903,6 @@ class SemanticTestApp:
                 source_document=doc_content,
                 stream=enable_stream,  # 传递流式输出配置
                 show_thinking=enable_thinking,  # 默认开启思维链（由环境变量控制）
-            )
-        elif self.api_handler:
-            # 延迟导入
-            from semantic_tester.api import check_semantic_similarity  # noqa: F811
-
-            return check_semantic_similarity(
-                gemini_api_handler=self.api_handler,
-                question=row_data["question"],
-                ai_answer=row_data["ai_answer"],
-                source_document_content=doc_content,
             )
         else:
             logger.error("没有可用的 API 处理器")
