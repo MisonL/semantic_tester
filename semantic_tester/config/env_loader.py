@@ -44,18 +44,18 @@ class EnvLoader:
             self._read_config_file(config_file_path)
 
     def _read_config_file(self, config_file_path: str):
-        """从指定路径读取配置文件
+        r"""从指定路径读取配置文件
 
         支持两种形式的配置：
         1. 单行键值：KEY=value
-        2. 使用三引号包裹的多行值：KEY="""..."""
+        2. 使用三引号包裹的多行值：KEY=\"\"\"...\"\"\"
 
-        示例：
+        示例::
 
-        SEMANTIC_CHECK_PROMPT="""
-        这里可以写多行提示词内容
-        支持换行，读取时会原样保留
-        """
+            SEMANTIC_CHECK_PROMPT=\"\"\"
+            这里可以写多行提示词内容
+            支持换行，读取时会原样保留
+            \"\"\"
         """
         multiline_key: str | None = None
         multiline_buffer: list[str] = []
