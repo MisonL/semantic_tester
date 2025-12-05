@@ -373,36 +373,45 @@ class SemanticTestApp:
                 )
 
                 # 使用重试行列表，跳过正常的处理逻辑
-                for idx, row_index in enumerate(retry_rows, 1):
-                    # 显示重试进度
+                try:
+                    for idx, row_index in enumerate(retry_rows, 1):
+                        # 显示重试进度
+                        print(
+                            f"{Fore.CYAN}📊 正在重新评估第 {idx}/{len(retry_rows)} 条记录 (行 {row_index + 1})...{Style.RESET_ALL}"
+                        )
+
+                        result = self._process_single_row(
+                            row_index=row_index,
+                            total_records=total_records,
+                            knowledge_base_dir=knowledge_base_dir,
+                            column_mapping=column_mapping,
+                            result_columns=result_columns,
+                            output_path=output_path,
+                            show_comparison_result=show_comparison_result,
+                            excel_processor=excel_processor,
+                            use_full_doc_match=use_full_doc_match,
+                            is_retry=True,
+                        )
+
+                        if result == "processed":
+                            processed_count += 1
+                        elif result == "skipped":
+                            skipped_count += 1
+                        elif result == "error":
+                            error_count += 1
+                            failed_rows.append(row_index)
+
+                        # 定期保存中间结果（每10条）
+                        if idx % 10 == 0:
+                            excel_processor.save_intermediate_results(output_path, idx)
+
+                except KeyboardInterrupt:
                     print(
-                        f"{Fore.CYAN}📊 正在重新评估第 {idx}/{len(retry_rows)} 条记录 (行 {row_index + 1})...{Style.RESET_ALL}"
+                        f"\n\n{Fore.YELLOW}⚠️  用户中断重试。正在保存当前进度...{Style.RESET_ALL}"
                     )
-
-                    result = self._process_single_row(
-                        row_index=row_index,
-                        total_records=total_records,
-                        knowledge_base_dir=knowledge_base_dir,
-                        column_mapping=column_mapping,
-                        result_columns=result_columns,
-                        output_path=output_path,
-                        show_comparison_result=show_comparison_result,
-                        excel_processor=excel_processor,
-                        use_full_doc_match=use_full_doc_match,
-                        is_retry=True,
-                    )
-
-                    if result == "processed":
-                        processed_count += 1
-                    elif result == "skipped":
-                        skipped_count += 1
-                    elif result == "error":
-                        error_count += 1
-                        failed_rows.append(row_index)
-
-                    # 定期保存中间结果（每10条）
-                    if idx % 10 == 0:
-                        excel_processor.save_intermediate_results(output_path, idx)
+                    excel_processor.save_final_results(output_path)
+                    print(f"{Fore.GREEN}✅ 进度已保存到: {output_path}{Style.RESET_ALL}")
+                    raise
 
                 # 保存重试结果
                 excel_processor.save_final_results(output_path)
@@ -500,33 +509,48 @@ class SemanticTestApp:
                             skipped_count += 1
 
         # 处理每一行数据
-        for row_index in range(total_records):
-            # 检查是否已处理
-            if excel_processor.has_result(row_index, result_columns):
-                # 如果已处理，跳过
-                # 可以在这里打印一条跳过日志，或者静默跳过
-                # 为了不刷屏，我们静默跳过，但在进度条上体现
-                continue
+        try:
+            for row_index in range(total_records):
+                # 检查是否已处理
+                if excel_processor.has_result(row_index, result_columns):
+                    # 如果已处理，跳过
+                    # 可以在这里打印一条跳过日志，或者静默跳过
+                    # 为了不刷屏，我们静默跳过，但在进度条上体现
+                    continue
 
-            result = self._process_single_row(
-                row_index=row_index,
-                total_records=total_records,
-                knowledge_base_dir=knowledge_base_dir,
-                column_mapping=column_mapping,
-                result_columns=result_columns,
-                output_path=output_path,
-                show_comparison_result=show_comparison_result,
-                excel_processor=excel_processor,
-                use_full_doc_match=use_full_doc_match,
+                result = self._process_single_row(
+                    row_index=row_index,
+                    total_records=total_records,
+                    knowledge_base_dir=knowledge_base_dir,
+                    column_mapping=column_mapping,
+                    result_columns=result_columns,
+                    output_path=output_path,
+                    show_comparison_result=show_comparison_result,
+                    excel_processor=excel_processor,
+                    use_full_doc_match=use_full_doc_match,
+                )
+
+                if result == "processed":
+                    processed_count += 1
+                elif result == "skipped":
+                    skipped_count += 1
+                else:
+                    error_count += 1
+                    failed_rows.append(row_index)
+
+                # 定期保存中间结果（每10条）
+                if (processed_count + skipped_count + error_count) % 10 == 0:
+                    excel_processor.save_intermediate_results(
+                        output_path, processed_count + already_processed_count
+                    )
+
+        except KeyboardInterrupt:
+            print(
+                f"\n\n{Fore.YELLOW}⚠️  用户中断处理。正在保存当前进度...{Style.RESET_ALL}"
             )
-
-            if result == "processed":
-                processed_count += 1
-            elif result == "skipped":
-                skipped_count += 1
-            else:
-                error_count += 1
-                failed_rows.append(row_index)
+            excel_processor.save_final_results(output_path)
+            print(f"{Fore.GREEN}✅ 进度已保存到: {output_path}{Style.RESET_ALL}")
+            raise
 
         # 保存最终结果
         excel_processor.save_final_results(output_path)
@@ -629,27 +653,42 @@ class SemanticTestApp:
         new_failed_rows = []
         retry_processed_count = 0
 
-        for row_index in failed_rows:
-            result = self._process_single_row(
-                row_index=row_index,
-                total_records=len(
-                    failed_rows
-                ),  # 这里的总数显示为待重试数可能更直观，但为了保持一致性...
-                # 或者我们可以传递一个特殊的 flag 让 _process_single_row 显示 "重试进度"
-                knowledge_base_dir=knowledge_base_dir,
-                column_mapping=column_mapping,
-                result_columns=result_columns,
-                output_path=output_path,
-                show_comparison_result=show_comparison_result,
-                excel_processor=excel_processor,
-                use_full_doc_match=use_full_doc_match,
-                is_retry=True,
-            )
+        try:
+            for idx, row_index in enumerate(failed_rows, 1):
+                result = self._process_single_row(
+                    row_index=row_index,
+                    total_records=len(
+                        failed_rows
+                    ),  # 这里的总数显示为待重试数可能更直观，但为了保持一致性...
+                    # 或者我们可以传递一个特殊的 flag 让 _process_single_row 显示 "重试进度"
+                    knowledge_base_dir=knowledge_base_dir,
+                    column_mapping=column_mapping,
+                    result_columns=result_columns,
+                    output_path=output_path,
+                    show_comparison_result=show_comparison_result,
+                    excel_processor=excel_processor,
+                    use_full_doc_match=use_full_doc_match,
+                    is_retry=True,
+                )
 
-            if result == "error":
-                new_failed_rows.append(row_index)
-            elif result == "processed":
-                retry_processed_count += 1
+                if result == "error":
+                    new_failed_rows.append(row_index)
+                elif result == "processed":
+                    retry_processed_count += 1
+
+                # 定期保存中间结果（每10条）
+                if idx % 10 == 0:
+                    excel_processor.save_intermediate_results(
+                        output_path, retry_processed_count
+                    )
+
+        except KeyboardInterrupt:
+            print(
+                f"\n\n{Fore.YELLOW}⚠️  用户中断重试。正在保存当前进度...{Style.RESET_ALL}"
+            )
+            excel_processor.save_final_results(output_path)
+            print(f"{Fore.GREEN}✅ 进度已保存到: {output_path}{Style.RESET_ALL}")
+            raise
 
         # 保存最终结果
         excel_processor.save_final_results(output_path)
