@@ -25,22 +25,29 @@ cd semantic_tester
 uv sync
 ```
 
-### 2. 渠道配置 (v4.0.0+)
+### 2. 环境变量配置
 
-在 `.env.config` 中配置 AI 渠道：
+```bash
+# 设置多渠道配置 (示例使用 iFlow 和 Gemini)
+export AI_CHANNEL_1_NAME='iFlow-Main'
+export AI_CHANNEL_1_API_KEY='sk-your-key'
+export AI_CHANNEL_1_CONCURRENCY=10
 
-```ini
-AI_CHANNEL_1_NAME=iFlow-Main
-AI_CHANNEL_1_API_KEY=sk-xxxx
-AI_CHANNEL_1_CONCURRENCY=10
+export AI_CHANNEL_2_NAME='Gemini-Flash'
+export AI_CHANNEL_2_API_KEY='your-gemini-key'
+export AI_CHANNEL_2_CONCURRENCY=5
+
+# 也支持传统的全局密钥配置 (兼容模式)
+export IFLOW_API_KEY='sk-xxx'
+export GEMINI_API_KEY='your-gemini-key'
 ```
 
 ### 3. 知识库文档准备
 
-在 `semantic_tester/处理后/` 目录下放置对应的 Markdown 知识库文档：
+在 `semantic_tester/kb-docs/` 目录下放置对应的 Markdown 知识库文档：
 
 ```
-处理后/
+kb-docs/
 ├── AI知识库.md
 ├── 产品手册.md
 ├── 使用指南.md
@@ -74,7 +81,7 @@ AI_CHANNEL_1_CONCURRENCY=10
 
    ```bash
    cd semantic_tester
-   uv run python semantic_tester.py
+   uv run python main.py
    ```
 
 2. **智能格式检测**
@@ -86,8 +93,8 @@ AI_CHANNEL_1_CONCURRENCY=10
    ✅ 检测到 Dify Chat Tester 输出格式！
    将自动适配列映射关系：
      • 原始问题 → 问题点
-     • OpenAI 兼容接口响应 → AI客服回答
-     • 文档名称 → 需要手动指定
+     • {供应商}响应 → AI客服回答
+     • 文档名称 → 自动适配（如果存在）或提示添加
    ```
 
    **多响应列处理：**
@@ -114,7 +121,8 @@ AI_CHANNEL_1_CONCURRENCY=10
 4. **配置知识库目录**
 
    ```
-   请输入知识库文档目录路径: 处理后/
+   检测到默认知识库目录: ./kb-docs/
+   是否使用此目录? (Y/n, 默认: Y): Y
    ```
 
 5. **完成配置**
@@ -141,7 +149,7 @@ AI_CHANNEL_1_CONCURRENCY=10
 
 3. **详细日志**
    ```bash
-   tail -f logs/semantic_test.log
+   tail -f logs/system.log
    ```
 
 ## 📊 数据格式说明
@@ -221,12 +229,12 @@ AI知识库.md
 
 for file in batch_query_log_*.xlsx; do
     echo "处理文件: $file"
-    uv run python semantic_tester.py << EOF
+    uv run python main.py << EOF
 $file
-处理后/
+./kb-docs/
 Y
-语义是否与源文档相符
-判断依据
+Y
+Y
 N
 ${file%.xlsx}_评估结果.xlsx
 EOF
@@ -265,13 +273,13 @@ print(doc_stats)
 
 - 单一知识库：填写统一的文档名（如 `AI知识库.md`）
 - 多知识库：根据问题内容填写对应的文档名
-- 确保文档存在于 `处理后/` 目录
+- 确保文档存在于 `kb-docs/` 目录
 
 ### Q3: Gemini API 调用失败？
 
 **A:**
 
-- 检查环境变量 `GEMINI_API_KEYS` 是否正确设置
+- 检查环境变量 `GEMINI_API_KEY` 或多渠道配置 `AI_CHANNEL_N_API_KEY` 是否正确设置
 - 确认网络连接正常
 - 检查 API 密钥是否有效且有配额
 
@@ -279,8 +287,8 @@ print(doc_stats)
 
 **A:**
 
-- 使用多个 API 密钥轮转
-- 调整请求间隔时间
+- 使用多渠道并发架构 (`AI_CHANNEL_N_...`) 分配多个 API 密钥
+- 调整 `AI_CHANNEL_N_CONCURRENCY` 参数增加并发数
 - 考虑分批处理
 
 ### Q5: Excel 文件读取错误？
@@ -330,4 +338,4 @@ print(doc_stats)
 
 **作者**: Mison
 **邮箱**: 1360962086@qq.com
-**更新时间**: 2025-11-18
+**更新时间**: 2025-12-23

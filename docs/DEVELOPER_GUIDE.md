@@ -56,7 +56,7 @@ Excel文件 → 任务队列 ─┬→ Channel 1 (Worker 1-N) ─┬→ 结果�
 
 ### 环境要求
 
-- Python 3.10+
+- Python 3.9+
 - UV (推荐) 或 pip
 - Git
 
@@ -160,18 +160,20 @@ pytest --cov=semantic_tester --cov-report=html
 
 ```python
 import pytest
-from semantic_tester.api import GeminiAPIHandler
+from semantic_tester.api import GeminiProvider
 
-class TestGeminiAPIHandler:
-    def test_init_with_keys(self):
-        """测试使用API密钥初始化"""
-        handler = GeminiAPIHandler(["test_key"])
-        assert handler.api_keys == ["test_key"]
+class TestGeminiProvider:
+    def test_init_with_config(self):
+        """测试使用配置初始化"""
+        config = {"api_keys": ["test_key"], "model": "gemini-2.5-flash"}
+        provider = GeminiProvider(config)
+        assert provider.api_keys == ["test_key"]
 
     def test_validate_key_success(self, mock_api):
         """测试密钥验证成功"""
-        handler = GeminiAPIHandler(["valid_key"])
-        assert handler.validate_api_key("valid_key") == True
+        config = {"api_keys": ["valid_key"]}
+        provider = GeminiProvider(config)
+        assert provider.validate_api_key("valid_key") == True
 ```
 
 ## 🔄 开发流程
@@ -224,16 +226,17 @@ git commit -m "fix: 修复具体问题描述"
 
 ```python
 # ✅ 批量处理和缓存
-class GeminiAPIHandler:
-    def __init__(self):
+class GeminiProvider:
+    def __init__(self, config):
         self._response_cache = {}
+        self.config = config
 
-    def check_semantic_similarity(self, question: str, answer: str, doc: str):
-        cache_key = hash((question, answer, doc))
+    def check_semantic_similarity(self, question: str, ai_answer: str, source_document: str):
+        cache_key = hash((question, ai_answer, source_document))
         if cache_key in self._response_cache:
             return self._response_cache[cache_key]
 
-        result = self._api_call(question, answer, doc)
+        result = self._api_call(question, ai_answer, source_document)
         self._response_cache[cache_key] = result
         return result
 ```
@@ -308,7 +311,7 @@ logger.info("API调用统计", extra={
 ### Docker 部署
 
 ```dockerfile
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 WORKDIR /app
 COPY requirements.txt .
@@ -338,17 +341,22 @@ PRODUCTION_CONFIG = {
 ### 核心类和方法
 
 ```python
-class GeminiAPIHandler:
-    def __init__(self, api_keys: List[str])
+class GeminiProvider:
+    def __init__(self, config: Dict[str, Any])
     def validate_api_key(self, api_key: str) -> bool
-    def rotate_key(self) -> str
-    def check_semantic_similarity(self, question: str, answer: str, doc: str) -> Dict
+    def check_semantic_similarity(self, question: str, ai_answer: str, source_document: str) -> Tuple[str, str]
+
+class ProviderManager:
+    def __init__(self, config: "EnvManager")
+    def validate_all_configured_channels(self) -> List[Dict[str, Any]]
+    def get_provider(self, provider_id: Optional[str] = None) -> Optional[AIProvider]
+    def check_semantic_similarity(self, question, ai_answer, source_document, provider_id=None)
 
 class ExcelProcessor:
-    def __init__(self, file_path: str)
-    def load_data(self) -> pd.DataFrame
-    def save_result(self, row_index: int, result: str, reason: str)
-    def get_row_data(self, row_index: int) -> Dict[str, str]
+    def __init__(self, excel_path: str)
+    def load_excel(self) -> bool
+    def save_result(self, row_index, result, reason, result_columns)
+    def get_row_data(self, row_index, column_mapping) -> Dict[str, str]
 ```
 
 ## 🔧 故障排除
