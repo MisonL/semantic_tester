@@ -51,6 +51,7 @@ class IflowProvider(AIProvider):
         self.current_key_index = 0
         self.key_last_used_time: Dict[str, float] = {}
         self.key_cooldown_until: Dict[str, float] = {}
+        self.lock = threading.Lock()  # 用于多线程并发下的同步
 
         # 初始化可用密钥和客户端
         self._initialize_api_keys()
@@ -91,17 +92,51 @@ class IflowProvider(AIProvider):
             )
 
     def _rotate_key(self, force_rotate: bool = False):
-        """轮转 API 密钥"""
-        if not self.api_keys or len(self.api_keys) <= 1:
+        """轮转到下一个 API 密钥（线程安全）"""
+        if not self.api_keys:
             return
 
-        # 如果未启用自动轮转且不是强制轮转，则不进行轮转
-        if not self.auto_rotate and not force_rotate:
-            return
+        # 用于记录需要在锁外执行的等待时间
+        wait_time_outside_lock = 0.0
 
-        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
-        self._update_client_headers()
-        logger.info(f"已切换到 iFlow API 密钥索引: {self.current_key_index}")
+        with self.lock:  # 使用线程锁确保整个轮转过程的原子性
+            # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+            if not self.auto_rotate and not force_rotate:
+                return
+
+            current_time = time.time()
+
+            for _ in range(len(self.api_keys)):
+                self.current_key_index = (self.current_key_index + 1) % len(
+                    self.api_keys
+                )
+                next_key = self.api_keys[self.current_key_index]
+
+                cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
+                cooldown_remaining = max(0.0, cooldown_until - current_time)
+
+                if cooldown_remaining <= 0:
+                    logger.info(f"iFlow 密钥 {self.current_key_index} 可用")
+                    self.key_last_used_time[next_key] = current_time
+                    self._update_client_headers()
+                    return
+                else:
+                    logger.info(
+                        f"iFlow 密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
+                    )
+            else:
+                max_cooldown = (
+                    max(self.key_cooldown_until.values(), default=0) - current_time
+                )
+                if max_cooldown > 0:
+                    wait_time_outside_lock = max_cooldown
+                    logger.warning(
+                        f"iFlow 所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s"
+                    )
+
+        # 在锁外执行等待
+        if wait_time_outside_lock > 0:
+            time.sleep(wait_time_outside_lock)
 
     def get_models(self) -> List[str]:
         """
@@ -131,20 +166,54 @@ class IflowProvider(AIProvider):
         return self.has_config and self.client is not None
 
     def validate_api_key(self, api_key: str) -> bool:
-        """验证 API 密钥有效性"""
+        """验证 API 密钥有效性 (使用最小化对话请求)"""
         if not api_key:
             return False
 
         try:
-            # 发送一个简单的测试请求
-            response = requests.get(
-                f"{self.base_url}/models",
-                headers={"Authorization": f"Bearer {api_key}"},
+            # 发送一个极其微小的测试请求
+            url = f"{self.base_url}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.default_model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+            }
+
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
                 timeout=10,
             )
-            return response.status_code == 200
+
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    # 检查业务状态码 (iFlow 有时在 200 响应里返回业务错误)
+                    if (
+                        isinstance(data, dict)
+                        and data.get("status")
+                        and str(data.get("status")) != "200"
+                    ):
+                        logger.warning(
+                            f"iFlow API 业务验证失败: {data.get('msg') or data}"
+                        )
+                        return False
+                    return True
+                except Exception:
+                    # 如果不是 JSON 或者格式不对，只要是 200 就暂且认为 OK (因为这是最小测试)
+                    return True
+            else:
+                logger.warning(
+                    f"iFlow API Key 验证失败, 状态码: {response.status_code}, 响应: {response.text[:100]}"
+                )
+                return False
         except Exception as e:
-            logger.warning(f"iFlow API Key 验证失败: {e}")
+            logger.warning(f"iFlow API Key 验证异常: {e}")
             return False
 
     def check_semantic_similarity(
@@ -155,6 +224,7 @@ class IflowProvider(AIProvider):
         model: Optional[str] = None,
         stream: bool = False,
         show_thinking: bool = False,
+        stream_callback: Optional[callable] = None,  # 新增回调参数
     ) -> tuple[str, str]:
         """
         检查语义相似性 (使用 Prompt 模式，不再使用 Tools)
@@ -230,10 +300,17 @@ class IflowProvider(AIProvider):
 
                 if stream:
                     # 流式处理（兼容多种 SSE 格式：data:{...} / data: {...} / 纯 JSON 行）
-                    from semantic_tester.ui.terminal_ui import StreamDisplay
+                    # 注意：在并发 Worker UI 模式下，StreamDisplay 可能会干扰 rich.Live 表格
+                    # 因此我们优先使用 callback，如果没有 callback 且不在静默模式，才使用 StreamDisplay
 
-                    stream_display = StreamDisplay(title=f"{self.name} ({self.model})")
-                    stream_display.start()
+                    stream_display = None
+                    if not stream_callback:
+                        from semantic_tester.ui.terminal_ui import StreamDisplay
+
+                        stream_display = StreamDisplay(
+                            title=f"{self.name} ({self.model})"
+                        )
+                        stream_display.start()
 
                     full_response = ""
                     try:
@@ -267,10 +344,16 @@ class IflowProvider(AIProvider):
                                 delta = data["choices"][0].get("delta", {})
                                 content = delta.get("content", "")
                                 if content:
-                                    stream_display.update(content)
                                     full_response += content
+                                    # 如果有回调，优先调用回调更新 UI 表格
+                                    if stream_callback:
+                                        stream_callback(full_response)
+                                    # 否则更新独立的流式显示
+                                    elif stream_display:
+                                        stream_display.update(content)
                     finally:
-                        stream_display.stop()
+                        if stream_display:
+                            stream_display.stop()
 
                     return self._parse_response(full_response)
 
@@ -282,6 +365,15 @@ class IflowProvider(AIProvider):
 
                     response.raise_for_status()
                     data = response.json()
+
+                    # 检查 iFlow 业务错误 (即使 HTTP 200)
+                    if (
+                        isinstance(data, dict)
+                        and data.get("status")
+                        and str(data.get("status")) != "200"
+                    ):
+                        error_msg = data.get("msg") or f"业务错误: {data.get('status')}"
+                        return "错误", f"iFlow 供应商返回错误: {error_msg}"
 
                     if "choices" in data and len(data["choices"]) > 0:
                         message = data["choices"][0].get("message", {})
@@ -297,18 +389,39 @@ class IflowProvider(AIProvider):
                 stop_event.set()
                 if waiting_thread.is_alive():
                     waiting_thread.join(timeout=0.5)
-                logger.error(
-                    f"iFlow API 调用异常 (尝试 {attempt + 1}/{max_retries}): {str(e)}"
-                )
+
+                error_msg = str(e)
+                # 检测速率限制 (429)
+                is_rate_limit = False
+                if hasattr(e, "response") and getattr(e, "response", None) is not None:
+                    if e.response.status_code == 429:
+                        is_rate_limit = True
+                elif "429" in error_msg or "rate limit" in error_msg.lower():
+                    is_rate_limit = True
+
+                if is_rate_limit:
+                    current_key = self.api_keys[self.current_key_index]
+                    delay = self._extract_retry_delay(error_msg) or 60
+                    self.key_cooldown_until[current_key] = time.time() + delay
+                    logger.warning(
+                        f"iFlow 达到速率限制，密钥 {self.current_key_index} 进入冷却 ({delay}s)，准备轮转..."
+                    )
+                    self._rotate_key(force_rotate=True)
+                else:
+                    logger.error(
+                        f"iFlow API 调用异常 (尝试 {attempt + 1}/{max_retries}): {error_msg}"
+                    )
+                    # 非速率限制错误也尝试轮转密钥以增加成功率
+                    self._rotate_key(force_rotate=True)
             finally:
                 stop_event.set()
                 if waiting_thread.is_alive():
                     waiting_thread.join(timeout=0.5)
 
-            if attempt == max_retries - 1 or not self.auto_rotate:
-                return "错误", "iFlow API 调用多次重试失败"
+            if attempt == max_retries - 1:
+                return "错误", f"iFlow API 调用多次重试失败: {error_msg}"
 
-            self._rotate_key()
+            # 这里的 _rotate_key已经在 except 块中调用了，此处可以根据需要添加额外等待
             time.sleep(1)
 
         return "错误", "iFlow API 调用多次重试失败"

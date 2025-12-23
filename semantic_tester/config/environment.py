@@ -24,83 +24,10 @@ class EnvManager:
         """初始化环境变量管理器"""
         self.env_loader = get_env_loader()
         self.load_environment()
-        self.gemini_api_keys = self.get_gemini_api_keys()
-        self._log_template_summary()
 
     def load_environment(self):
         """加载环境变量"""
         load_dotenv()  # 优先加载环境变量
-
-    def _load_gemini_keys(self) -> List[str]:
-        """
-        加载 Gemini API 密钥
-        优先从环境变量获取，其次从 .env.config 文件获取
-
-        Returns:
-            List[str]: API 密钥列表
-        """
-        # 优先从环境变量获取（支持 GEMINI_API_KEY / GEMINI_API_KEYS 两种命名）
-        gemini_api_keys_str = os.getenv("GEMINI_API_KEY") or os.getenv(
-            "GEMINI_API_KEYS"
-        )
-
-        # 如果环境变量不存在，尝试从 .env.config 文件获取
-        if not gemini_api_keys_str:
-            gemini_api_keys_str = self.env_loader.get_str(
-                "GEMINI_API_KEY"
-            ) or self.env_loader.get_str("GEMINI_API_KEYS")
-            if gemini_api_keys_str:
-                logger.info("从 .env.config 文件加载 Gemini API 密钥")
-
-        if not gemini_api_keys_str:
-            logger.warning("未配置 GEMINI_API_KEY")
-            return []
-
-        # 使用正则表达式分割密钥，支持逗号和空格分隔
-        all_keys = [
-            key.strip()
-            for key in re.split(r"[\s,]+", gemini_api_keys_str)
-            if key.strip()
-        ]
-
-        if not all_keys:
-            logger.warning("GEMINI_API_KEY 配置格式无效")
-            return []
-
-        # 过滤模板值
-        valid_keys = [key for key in all_keys if not self._is_template_value(key)]
-
-        if not valid_keys:
-            # 具体统计在 _log_template_summary 中统一处理
-            return []
-
-        logger.info(f"成功加载 {len(valid_keys)} 个有效的 Gemini API 密钥")
-        return valid_keys
-
-    def get_gemini_api_keys(self) -> List[str]:
-        """获取过滤后的 Gemini API 密钥
-
-        支持以下环境变量/配置键（按优先级排列）:
-        1. 环境变量 `GEMINI_API_KEY`
-        2. 环境变量 `GEMINI_API_KEYS`（向后兼容别名）
-        3. `.env.config` 中的 `GEMINI_API_KEY` 或 `GEMINI_API_KEYS`
-        """
-        return self._load_gemini_keys()
-
-    def get_gemini_model(self) -> str:
-        """
-        获取 Gemini 模型名称
-        优先从环境变量获取，其次从 .env.config 文件获取
-
-        Returns:
-            str: 模型名称
-        """
-        # 优先从环境变量获取
-        model = os.getenv("GEMINI_MODEL")
-        if not model:
-            # 从 .env 文件获取
-            model = self.env_loader.get_str("GEMINI_MODEL")
-        return model or "gemini-2.0-flash-exp"
 
     def _is_template_value(self, value: str) -> bool:
         """
@@ -134,176 +61,97 @@ class EnvManager:
         value_lower = value.lower()
         return any(indicator in value_lower for indicator in template_indicators)
 
-    def validate_required_env(self) -> bool:
+    def get_channels_config(self) -> List[dict]:
         """
-        验证必需的环境变量
-        改为警告而非致命错误，支持无密钥启动
-
-        Returns:
-            bool: 是否有可用的API密钥
+        获取多渠道配置 (参考七鱼项目)
+        支持 AI_CHANNEL_1_NAME, AI_CHANNEL_1_API_KEY, AI_CHANNEL_1_BASE_URL, AI_CHANNEL_1_MODEL
         """
-        if not self.gemini_api_keys:
-            logger.warning("未配置 Gemini API 密钥")
-            logger.info("您可以通过以下方式配置：")
-            logger.info(
-                "1. 设置环境变量：export GEMINI_API_KEY='您的API密钥1,您的API密钥2'"
+        channels = []
+        i = 1
+        while i <= 20:  # 限制最多20个渠道
+            name_key = f"AI_CHANNEL_{i}_NAME"
+            name = os.getenv(name_key) or self.env_loader.get_str(name_key)
+            if not name:
+                break
+
+            api_key_key = f"AI_CHANNEL_{i}_API_KEY"
+            api_key = os.getenv(api_key_key) or self.env_loader.get_str(api_key_key)
+
+            base_url_key = f"AI_CHANNEL_{i}_BASE_URL"
+            base_url = os.getenv(base_url_key) or self.env_loader.get_str(base_url_key)
+
+            model_key = f"AI_CHANNEL_{i}_MODEL"
+            model = os.getenv(model_key) or self.env_loader.get_str(model_key)
+
+            app_id_key = f"AI_CHANNEL_{i}_APP_ID"
+            app_id = os.getenv(app_id_key) or self.env_loader.get_str(app_id_key)
+
+            # 并发数配置 (支持环境变量覆盖)
+            concurrency_key = f"AI_CHANNEL_{i}_CONCURRENCY"
+            concurrency_str = os.getenv(concurrency_key) or self.env_loader.get_str(
+                concurrency_key
             )
-            logger.info(
-                "2. 在 .env.config 文件中配置：GEMINI_API_KEY=您的API密钥1,您的API密钥2"
+
+            # 处理行内注释 (例如: 1 # 注释)
+            if concurrency_str and "#" in str(concurrency_str):
+                concurrency_str = str(concurrency_str).split("#")[0].strip()
+
+            try:
+                concurrency = int(concurrency_str) if concurrency_str else 1
+            except (ValueError, TypeError):
+                # 记录警告但继续执行，使用默认值 1
+                logger.warning(
+                    f"无效的并发配置 {concurrency_key}: {concurrency_str}, 默认为 1"
+                )
+                concurrency = 1
+
+            channels.append(
+                {
+                    "id": f"channel_{i}",
+                    "display_name": f"渠道 {i}: {name}",
+                    "type": name.lower(),  # 对应供应商类型 (gemini, openai, dify, iflow, anthropic)
+                    "api_keys": [api_key] if api_key else [],
+                    "base_url": base_url,
+                    "model": model,
+                    "app_id": app_id,
+                    "concurrency": concurrency,
+                    "has_config": api_key and not self._is_template_value(api_key),
+                }
             )
-            logger.info("3. 程序运行时交互式输入")
-            return False
+            i += 1
 
-        return True
+        # 尝试加载 ai_config.json 来覆盖/补充并发配置
+        config_path = os.path.join(os.getcwd(), "ai_config.json")
+        if os.path.exists(config_path):
+            try:
+                import json
 
-    def get_ai_providers(self):
-        """获取AI供应商配置"""
-        return self.env_loader.get_ai_providers()
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+                    if isinstance(config_data, list):
+                        for channel_cfg in config_data:
+                            c_id_num = channel_cfg.get("channel_id")
+                            if c_id_num:
+                                target_id = f"channel_{c_id_num}"
+                                # 如果渠道已通过环境变量定义，则更新并发数
+                                for c in channels:
+                                    if c["id"] == target_id:
+                                        c["concurrency"] = channel_cfg.get(
+                                            "concurrency", c["concurrency"]
+                                        )
+                                        break
 
-    def get_openai_config(self) -> dict:
-        """获取 OpenAI 配置（支持多密钥）"""
-        # 加载API密钥字符串（支持逗号分隔的多个密钥）
-        api_keys_str = os.getenv("OPENAI_API_KEY") or self.env_loader.get_str(
-            "OPENAI_API_KEY", ""
-        )
+                                # 如果环境变量中没有该渠道，但 JSON 中有，可以考虑是否要通过 JSON 完全定义
+                                # 暂时只做覆盖
+            except Exception as e:
+                logger.warning(f"加载 ai_config.json 失败: {e}")
 
-        # 分割多个密钥
-        all_keys = []
-        if api_keys_str:
-            all_keys = [
-                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
-            ]
-
-        # 过滤模板值
-        valid_keys = [key for key in all_keys if not self._is_template_value(key)]
-
-        # 模板值过滤情况在 _log_template_summary 中统一处理
-
-        model = os.getenv("OPENAI_MODEL") or self.env_loader.get_str(
-            "OPENAI_MODEL", "gpt-4o"
-        )
-        base_url = os.getenv("OPENAI_BASE_URL") or self.env_loader.get_str(
-            "OPENAI_BASE_URL", "https://api.openai.com/v1"
-        )
-
-        has_config = len(valid_keys) > 0
-
-        return {
-            "api_keys": valid_keys,  # 改为api_keys（复数）
-            "model": model,
-            "base_url": base_url,
-            "has_config": has_config,
-        }
-
-    def get_dify_config(self) -> dict:
-        """获取 Dify 配置（支持多密钥）"""
-        # 加载API密钥字符串（支持逗号分隔的多个密钥）
-        api_keys_str = os.getenv("DIFY_API_KEY") or self.env_loader.get_str(
-            "DIFY_API_KEY", ""
-        )
-
-        # 分割多个密钥
-        all_keys = []
-        if api_keys_str:
-            all_keys = [
-                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
-            ]
-
-        # 过滤模板值
-        valid_keys = [key for key in all_keys if not self._is_template_value(key)]
-
-        # 模板值过滤情况在 _log_template_summary 中统一处理
-
-        base_url = os.getenv("DIFY_BASE_URL") or self.env_loader.get_str(
-            "DIFY_BASE_URL", "https://api.dify.ai/v1"
-        )
-        app_id = os.getenv("DIFY_APP_ID") or self.env_loader.get_str("DIFY_APP_ID", "")
-
-        has_config = len(valid_keys) > 0
-
-        return {
-            "api_keys": valid_keys,  # 改为api_keys（复数）
-            "base_url": base_url,
-            "app_id": app_id,
-            "has_config": has_config,
-        }
-
-    def get_anthropic_config(self) -> dict:
-        """获取 Anthropic 配置（支持多密钥）"""
-        # 加载API密钥字符串（支持逗号分隔的多个密钥）
-        api_keys_str = os.getenv("ANTHROPIC_API_KEY") or self.env_loader.get_str(
-            "ANTHROPIC_API_KEY", ""
-        )
-
-        # 分割多个密钥
-        all_keys = []
-        if api_keys_str:
-            all_keys = [
-                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
-            ]
-
-        # 过滤模板值
-        valid_keys = [key for key in all_keys if not self._is_template_value(key)]
-
-        # 模板值过滤情况在 _log_template_summary 中统一处理
-
-        model = os.getenv("ANTHROPIC_MODEL") or self.env_loader.get_str(
-            "ANTHROPIC_MODEL", "claude-sonnet-4-20250514"
-        )
-        base_url = os.getenv("ANTHROPIC_BASE_URL") or self.env_loader.get_str(
-            "ANTHROPIC_BASE_URL", "https://api.anthropic.com"
-        )
-
-        has_config = len(valid_keys) > 0
-
-        return {
-            "api_keys": valid_keys,  # 改为api_keys（复数）
-            "model": model,
-            "base_url": base_url,
-            "has_config": has_config,
-        }
-
-    def get_iflow_config(self) -> dict:
-        """获取 iFlow 配置（支持多密钥）"""
-        # 加载API密钥字符串（支持逗号分隔的多个密钥）
-        api_keys_str = os.getenv("IFLOW_API_KEY") or self.env_loader.get_str(
-            "IFLOW_API_KEY", ""
-        )
-
-        # 分割多个密钥
-        all_keys = []
-        if api_keys_str:
-            all_keys = [
-                key.strip() for key in re.split(r"[\s,]+", api_keys_str) if key.strip()
-            ]
-
-        # 过滤模板值
-        valid_keys = [key for key in all_keys if not self._is_template_value(key)]
-
-        # 模板值过滤情况在 _log_template_summary 中统一处理
-
-        model = os.getenv("IFLOW_MODEL") or self.env_loader.get_str(
-            "IFLOW_MODEL", "qwen3-max"
-        )
-        base_url = os.getenv("IFLOW_BASE_URL") or self.env_loader.get_str(
-            "IFLOW_BASE_URL", "https://apis.iflow.cn/v1"
-        )
-
-        has_config = len(valid_keys) > 0
-
-        return {
-            "api_keys": valid_keys,  # 改为api_keys（复数）
-            "model": model,
-            "base_url": base_url,
-            "has_config": has_config,
-        }
+        return channels
 
     def get_batch_config(self) -> dict:
         """获取批量处理配置"""
         return {
-            "request_interval": self.env_loader.get_float(
-                "BATCH_REQUEST_INTERVAL", 1.0
-            ),
+            "save_interval": self.env_loader.get_int("BATCH_SAVE_INTERVAL", 10),
             "waiting_indicators": self.env_loader.get_list(
                 "WAITING_INDICATORS", ["⣾", "⣽", "⣻", "⢿"]
             ),
@@ -343,38 +191,15 @@ class EnvManager:
     def print_env_status(self):
         """打印环境变量状态"""
         print("\n=== 环境配置状态 ===")
-
         # 显示配置文件状态
         self.env_loader.print_config_status()
 
-        print("\n--- 环境变量优先级配置 ---")
-        print(
-            f"Gemini API 密钥: {'已设置' if self.gemini_api_keys else '未设置'} ({len(self.gemini_api_keys)} 个)"
-        )
-        print(f"Gemini 模型: {self.get_gemini_model()}")
-
-        # 显示其他供应商配置
-        openai_config = self.get_openai_config()
-        print(
-            f"OpenAI API 密钥: {'已设置' if openai_config['has_config'] else '未设置'}"
-        )
-        if openai_config["has_config"]:
-            print(f"OpenAI 模型: {openai_config['model']}")
-
-        dify_config = self.get_dify_config()
-        print(f"Dify API 密钥: {'已设置' if dify_config['has_config'] else '未设置'}")
-
-        anthropic_config = self.get_anthropic_config()
-        print(
-            f"Anthropic API 密钥: {'已设置' if anthropic_config['has_config'] else '未设置'}"
-        )
-
-        iflow_config = self.get_iflow_config()
-        print(f"iFlow API 密钥: {'已设置' if iflow_config['has_config'] else '未设置'}")
-
-        # 显示AI供应商配置
-        ai_providers = self.get_ai_providers()
-        print(f"已配置AI供应商: {', '.join([p['name'] for p in ai_providers])}")
+        # 显示多渠道配置概览
+        channels = self.get_channels_config()
+        configured_channels = [c for c in channels if c["has_config"]]
+        print(f"已配置 AI 渠道: {len(configured_channels)} / {len(channels)}")
+        for c in configured_channels:
+            print(f"  - {c['display_name']} (并发: {c['concurrency']})")
 
     def get_api_keys_preview(self) -> str:
         """

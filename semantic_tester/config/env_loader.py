@@ -186,14 +186,6 @@ class EnvLoader:
         """加载默认配置"""
         logger.info("使用内置默认配置")
         self.config = {
-            "AI_PROVIDERS": "1:Gemini:gemini;2:OpenAI兼容接口:openai;3:Anthropic兼容接口:anthropic;4:Dify:dify;5:iFlow:iflow",
-            "GEMINI_MODEL": "gemini-2.5-flash",
-            "OPENAI_MODEL": "gpt-4o",
-            "OPENAI_BASE_URL": "https://api.openai.com/v1",
-            "ANTHROPIC_MODEL": "claude-sonnet-4-20250514",
-            "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
-            "DIFY_BASE_URL": "https://api.dify.ai/v1",
-            "BATCH_REQUEST_INTERVAL": "1.0",
             "WAITING_INDICATORS": "⣾,⣽,⣻,⢿,⡿,⣟,⣯,⣷",
             "WAITING_TEXT": "正在处理",
             "WAITING_DELAY": "0.1",
@@ -245,30 +237,6 @@ class EnvLoader:
 
         return [item.strip() for item in value.split(separator) if item.strip()]
 
-    def get_ai_providers(self) -> List[dict]:
-        """获取AI供应商配置"""
-        providers_str = self.get_str("AI_PROVIDERS", "1:Gemini:gemini")
-        providers: list[dict[str, Any]] = []
-
-        if not providers_str:
-            return providers
-
-        try:
-            for provider_str in providers_str.split(";"):
-                if not provider_str.strip():
-                    continue
-                parts = provider_str.strip().split(":")
-                if len(parts) >= 3:
-                    providers.append(
-                        {"index": int(parts[0]), "name": parts[1], "id": parts[2]}
-                    )
-        except (ValueError, IndexError) as e:
-            logger.error(f"解析AI供应商配置失败: {e}")
-            # 返回默认的Gemini供应商
-            providers = [{"index": 1, "name": "Gemini", "id": "gemini"}]
-
-        return providers
-
     def has_config(self, key: str) -> bool:
         """检查是否存在某个配置"""
         return key in self.config and self.config[key].strip() != ""
@@ -278,25 +246,6 @@ class EnvLoader:
         print("\n=== 配置文件状态 ===")
         print(f"配置文件: {self.env_file}")
         print(f"配置项数量: {len(self.config)}")
-
-        # 显示关键配置状态（不显示敏感信息）
-        ai_providers = self.get_ai_providers()
-        print(f"AI供应商: {', '.join([p['name'] for p in ai_providers])}")
-
-        # 支持 GEMINI_API_KEY / GEMINI_API_KEYS 两种命名
-        gemini_keys = self.get_list("GEMINI_API_KEY") or self.get_list(
-            "GEMINI_API_KEYS"
-        )
-        print(
-            f"Gemini API密钥: {'已配置' if gemini_keys else '未配置'} ({len(gemini_keys)} 个)"
-        )
-
-        print(
-            f"OpenAI API密钥: {'已配置' if self.has_config('OPENAI_API_KEY') else '未配置'}"
-        )
-        print(
-            f"Dify API密钥: {'已配置' if self.has_config('DIFY_API_KEY') else '未配置'}"
-        )
         print(f"日志级别: {self.get_str('LOG_LEVEL', 'INFO')}")
 
 

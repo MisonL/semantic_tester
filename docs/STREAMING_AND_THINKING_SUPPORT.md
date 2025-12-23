@@ -41,65 +41,45 @@
 - 从 `response.usage.completion_tokens_details.reasoning_tokens` 提取推理信息
 - 使用 `max_completion_tokens` 而不是 `max_tokens`
 
-## 待完成的更新
+### 4. Anthropic Provider ✅
 
-### 4. Anthropic Provider
+**支持的功能:**
 
-**需要添加:**
+- ✅ 流式输出 (`stream=True`)
+- ✅ Extended Thinking 特性支持
 
-- 流式输出支持
-- Extended Thinking 特性支持（Claude 3.7 Sonnet）
+**实现要点:**
 
-**实现方案:**
+- 使用 `client.messages.stream()` 进行流式调用
+- 支持流式回调函数
 
-```python
-# 流式调用
-with client.messages.stream(
-    model=model,
-    messages=messages,
-    max_tokens=1024,
-) as stream:
-    for text in stream.text_stream:
-        print(text, end="", flush=True)
+### 5. Dify Provider ✅
 
-# Extended Thinking
-# 使用 thinking 参数
-response = client.messages.create(
-    model="claude-3-7-sonnet-20250314",
-    max_tokens=1024,
-    thinking={
-        "type": "enabled",
-        "budget_tokens": 1000
-    },
-    messages=[{"role": "user", "content": "..."}]
-)
-```
+**支持的功能:**
 
-### 5. Dify Provider
+- ✅ 流式输出 (`stream=True`)
+- ✅ 流式回调函数 (`stream_callback`)
 
-**需要添加:**
-
-- 流式输出支持（已有基础实现，需调整）
-
-**实现方案:**
-参考 dify_chat_tester 的实现：
+**实现要点:**
 
 - 使用 `response_mode: "streaming"`
 - 解析 SSE 事件流
 - 处理 `message`, `message_end` 等事件
 
-### 6. iFlow Provider
+### 6. iFlow Provider ✅
 
-**需要添加:**
+**支持的功能:**
 
-- 流式输出支持
+- ✅ 流式输出 (`stream=True`)
+- ✅ 流式回调函数 (`stream_callback`)
+- ✅ 思维链支持 (`show_thinking`)
 
-**实现方案:**
-参考 dify_chat_tester 的实现：
+**实现要点:**
 
 - 使用 `stream: True`
 - 解析流式响应中的 `delta.content`
 - 处理 `finish_reason: "stop"` 标记
+- 支持 reasoning_content 提取
 
 ## 使用示例
 
@@ -159,7 +139,4 @@ result, reason = openai_provider.check_semantic_similarity(
 
 ## 下一步计划
 
-1. 为 Anthropic 添加完整支持
-2. 为 Dify 和 iFlow 添加流式支持
-3. 在 UI 层面集成这些新功能
-4. 添加配置选项让用户可以选择默认行为
+所有供应商的流式输出和思维链功能均已在 v4.0.0 中完成 ✅

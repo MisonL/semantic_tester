@@ -142,6 +142,40 @@ class AIProvider(ABC):
             f"configured={self.is_configured()})"
         )
 
+    def _extract_retry_delay(self, error_msg: str) -> Optional[int]:
+        """
+        从错误消息中提取重试延迟时间
+
+        Args:
+            error_msg: 错误消息字符串
+
+        Returns:
+            Optional[int]: 重试延迟秒数，无法提取返回None
+        """
+        import re
+
+        # 常见模式 1: "try again in X seconds"
+        match = re.search(r"try again in (\d+)s", error_msg.lower())
+        if match:
+            return int(match.group(1))
+
+        # 常见模式 4: "retry in X seconds"
+        match = re.search(r"retry in (\d+)s?", error_msg.lower())
+        if match:
+            return int(match.group(1))
+
+        # 常见模式 2: "retry after X seconds"
+        match = re.search(r"retry after (\d+)", error_msg.lower())
+        if match:
+            return int(match.group(1))
+
+        # 常见模式 3: "retryDelay": "12s" (JSON format)
+        match = re.search(r"['\"]?retryDelay['\"]?:\s*['\"]?(\d+)s?['\"]?", error_msg)
+        if match:
+            return int(match.group(1))
+
+        return None
+
 
 class ProviderError(Exception):
     """供应商相关错误"""

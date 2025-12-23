@@ -56,6 +56,7 @@ class DifyProvider(AIProvider):
         self.key_last_used_time: Dict[str, float] = {}
         self.key_cooldown_until: Dict[str, float] = {}
         self.first_actual_call = True
+        self.lock = threading.Lock()  # 用于多线程并发下的同步
 
         # 确保 base_url 以 /v1 结尾
         self.base_url = self.base_url.rstrip("/")
@@ -225,7 +226,13 @@ class DifyProvider(AIProvider):
                 if isinstance(e, (AuthenticationError, RateLimitError)):
                     if self.auto_rotate:
                         logger.info("尝试轮转 Dify API 密钥...")
-                        self._rotate_key()
+
+                        # 标记当前密钥冷却 (默认60秒)
+                        current_key = self.api_keys[self.current_key_index]
+                        retry_after = self._extract_retry_delay(str(e)) or 60
+                        self.key_cooldown_until[current_key] = time.time() + retry_after
+
+                        self._rotate_key(force_rotate=True)
 
                 # 对于网络错误，等待一段时间后重试
                 time.sleep(2)  # 稍作等待
@@ -247,13 +254,63 @@ class DifyProvider(AIProvider):
 
         return "错误", "Dify API 调用多次重试失败"
 
-    def _rotate_key(self):
-        """轮转 API 密钥"""
+    def _rotate_key(self, force_rotate: bool = False):
+        """轮转到下一个 API 密钥（线程安全）"""
         if not self.api_keys or len(self.api_keys) <= 1:
             return
 
-        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
-        logger.info(f"已切换到 Dify API 密钥索引: {self.current_key_index}")
+        # 用于记录需要在锁外执行的等待时间
+        wait_time_outside_lock = 0.0
+
+        with self.lock:  # 使用线程锁确保整个轮转过程的原子性
+            # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+            if not self.auto_rotate and not force_rotate:
+                return
+
+            current_time = time.time()
+
+            for _ in range(len(self.api_keys)):
+                self.current_key_index = (self.current_key_index + 1) % len(
+                    self.api_keys
+                )
+                next_key = self.api_keys[self.current_key_index]
+
+                cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
+                cooldown_remaining = max(0.0, cooldown_until - current_time)
+
+                if cooldown_remaining <= 0:
+                    if self.first_actual_call:
+                        logger.info(f"首次实际调用，密钥 {self.current_key_index} 可用")
+                        self.first_actual_call = False
+
+                    logger.info(f"密钥 {self.current_key_index} 可用")
+                    self.key_last_used_time[next_key] = current_time
+                    break
+                else:
+                    logger.info(
+                        f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
+                    )
+            else:
+                max_cooldown = (
+                    max(self.key_cooldown_until.values(), default=0) - current_time
+                )
+                if max_cooldown > 0:
+                    wait_time_outside_lock = max_cooldown
+                    logger.warning(
+                        f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s"
+                    )
+
+        # 在锁外执行等待
+        if wait_time_outside_lock > 0:
+            time.sleep(wait_time_outside_lock)
+            # 等待后需要重新尝试轮转
+            if (
+                wait_time_outside_lock
+                == max(self.key_cooldown_until.values(), default=0)
+                - time.time()
+                + wait_time_outside_lock
+            ):
+                self._rotate_key(force_rotate=True)
 
     def _send_dify_request(  # noqa: C901
         self,

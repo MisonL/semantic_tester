@@ -1,4 +1,4 @@
-# 📚 开发者指南
+# 📚 开发者指南 (v4.0.0)
 
 ## 概述
 
@@ -6,50 +6,62 @@
 
 ## 🏗️ 项目架构详解
 
-### 分层架构设计
+### 分层架构设计 (v4.0.0 多渠道并发架构)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    用户界面层 (UI)                           │
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │   菜单系统        │  │   命令行界面      │                  │
-│  │   (menu.py)      │  │   (cli.py)       │                  │
-│  └─────────────────┘  └─────────────────┘                  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │   CLI 终端界面    │  │   WorkerTable   │  │  进度面板     │ │
+│  │   (cli.py)       │  │   (worker_ui)   │  │  (rich.Live) │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                   业务逻辑层                                │
+│                   业务逻辑层 (v4.0.0 新增)                    │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
-│  │   Excel处理      │  │   API管理        │  │  配置管理     │ │
-│  │ (processor.py)   │  │(gemini_handler) │  │ (config/)     │ │
+│  │   多渠道管理      │  │   并发任务队列    │  │  结果聚合     │ │
+│  │(ProviderManager) │  │ (ThreadPool)    │  │  (callback)  │ │
 │  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                   API 供应商层                               │
+│  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐          │
+│  │Gemini│  │OpenAI│  │Claude│  │ Dify │  │iFlow │          │
+│  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘          │
+│           全部支持流式输出和思维链展示 ✅                      │
 └─────────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────────┐
 │                    基础设施层                               │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
-│  │   文件操作       │  │   日志管理       │  │  数据验证     │ │
-│  │ (file_utils.py)  │  │(logger_utils.py)│  │(validation)  │ │
+│  │   文件操作       │  │   日志管理       │  │  配置加载     │ │
+│  │ (file_utils.py)  │  │(logger_utils.py)│  │(env_loader)  │ │
 │  └─────────────────┘  └─────────────────┘  └──────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 数据流图
+### 数据流图 (v4.0.0)
 
 ```
-Excel文件 → ExcelProcessor → 数据验证 → GeminiAPI → 结果处理 → Excel保存
-    ↓           ↓              ↓         ↓          ↓           ↓
-文件读取   → 数据清洗   →   格式检查  → 语义分析  →  格式化   →  增量保存
+Excel文件 → 任务队列 ─┬→ Channel 1 (Worker 1-N) ─┬→ 结果聚合 → Excel保存
+                     ├→ Channel 2 (Worker 1-N) ─┤
+                     └→ Channel N (Worker 1-N) ─┘
+                           ↓
+                    实时 UI 更新 (WorkerTableUI)
 ```
 
 ## 🔧 开发环境设置
 
 ### 环境要求
+
 - Python 3.9+
 - UV (推荐) 或 pip
 - Git
 
 ### 开发环境搭建
+
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
@@ -74,6 +86,7 @@ pre-commit install
 ## 📝 代码规范
 
 ### 类型注解规范
+
 ```python
 # ✅ 正确的类型注解
 def process_data(
@@ -90,6 +103,7 @@ ConfigDict = Dict[str, Any]
 ```
 
 ### 错误处理规范
+
 ```python
 # ✅ 完善的错误处理
 try:
@@ -103,6 +117,7 @@ except Exception as e:
 ```
 
 ### 日志记录规范
+
 ```python
 # ✅ 结构化日志记录
 logger.info("开始处理文件", extra={"file": file_path})
@@ -113,6 +128,7 @@ logger.error("处理失败", exc_info=True)
 ## 🧪 测试指南
 
 ### 测试结构
+
 ```
 tests/
 ├── unit/                   # 单元测试
@@ -128,6 +144,7 @@ tests/
 ```
 
 ### 运行测试
+
 ```bash
 # 运行所有测试
 pytest
@@ -140,6 +157,7 @@ pytest --cov=semantic_tester --cov-report=html
 ```
 
 ### 测试示例
+
 ```python
 import pytest
 from semantic_tester.api import GeminiAPIHandler
@@ -159,6 +177,7 @@ class TestGeminiAPIHandler:
 ## 🔄 开发流程
 
 ### 1. 功能开发流程
+
 ```bash
 # 1. 创建功能分支
 git checkout -b feature/new-feature
@@ -180,7 +199,8 @@ git commit -m "feat: 添加新功能"
 git push origin feature/new-feature
 ```
 
-### 2. Bug修复流程
+### 2. Bug 修复流程
+
 ```bash
 # 1. 创建bug修复分支
 git checkout -b fix/bug-description
@@ -200,7 +220,8 @@ git commit -m "fix: 修复具体问题描述"
 
 ## 📊 性能优化指南
 
-### API调用优化
+### API 调用优化
+
 ```python
 # ✅ 批量处理和缓存
 class GeminiAPIHandler:
@@ -218,6 +239,7 @@ class GeminiAPIHandler:
 ```
 
 ### 内存管理优化
+
 ```python
 # ✅ 使用生成器处理大文件
 def process_large_excel(file_path: str):
@@ -230,6 +252,7 @@ def process_large_excel(file_path: str):
 ## 🔍 调试指南
 
 ### 日志调试
+
 ```python
 import logging
 
@@ -242,6 +265,7 @@ logger.debug("变量状态", extra={"variable": value})
 ```
 
 ### 性能分析
+
 ```python
 import cProfile
 import pstats
@@ -262,12 +286,14 @@ stats.print_stats(10)  # 显示前10个最耗时的函数
 ## 📈 监控和维护
 
 ### 关键指标监控
-- API调用成功率
+
+- API 调用成功率
 - 平均响应时间
 - 错误率统计
 - 内存使用情况
 
 ### 日志监控
+
 ```python
 # 结构化日志便于监控
 logger.info("API调用统计", extra={
@@ -279,7 +305,8 @@ logger.info("API调用统计", extra={
 
 ## 🚀 部署指南
 
-### Docker部署
+### Docker 部署
+
 ```dockerfile
 FROM python:3.9-slim
 
@@ -292,6 +319,7 @@ CMD ["python", "main.py"]
 ```
 
 ### 生产环境配置
+
 ```python
 # 生产环境配置
 import os
@@ -305,9 +333,10 @@ PRODUCTION_CONFIG = {
 }
 ```
 
-## 📚 API参考
+## 📚 API 参考
 
 ### 核心类和方法
+
 ```python
 class GeminiAPIHandler:
     def __init__(self, api_keys: List[str])
@@ -326,7 +355,8 @@ class ExcelProcessor:
 
 ### 常见问题及解决方案
 
-#### 1. API密钥问题
+#### 1. API 密钥问题
+
 ```python
 # 问题：API密钥无效
 # 解决：检查密钥格式和网络连接
@@ -340,7 +370,8 @@ def test_api_connection():
         return False
 ```
 
-#### 2. Excel文件读取问题
+#### 2. Excel 文件读取问题
+
 ```python
 # 问题：文件格式不支持
 # 解决：检查文件扩展名和格式
@@ -357,6 +388,7 @@ def validate_excel_file(file_path: str) -> bool:
 ## 📋 最佳实践清单
 
 ### 代码质量
+
 - [ ] 所有函数都有类型注解
 - [ ] 错误处理完善
 - [ ] 日志记录适当
@@ -364,13 +396,15 @@ def validate_excel_file(file_path: str) -> bool:
 - [ ] 单元测试覆盖
 
 ### 性能优化
-- [ ] 避免重复API调用
+
+- [ ] 避免重复 API 调用
 - [ ] 使用缓存机制
 - [ ] 及时释放资源
 - [ ] 批量处理数据
 
 ### 安全考虑
-- [ ] API密钥安全存储
+
+- [ ] API 密钥安全存储
 - [ ] 输入数据验证
 - [ ] 错误信息脱敏
 - [ ] 权限控制适当

@@ -44,7 +44,9 @@ def test_startup_banner_and_provider_summary_and_simple_menu(capsys, monkeypatch
     # 避免 rich 真正输出复杂格式，只验证不会抛异常
     LoggerUtils.print_startup_banner()
 
-    LoggerUtils.print_provider_summary({"total": 2, "configured": 1, "current": "gemini"})
+    LoggerUtils.print_provider_summary(
+        {"total": 2, "configured": 1, "current": "gemini"}
+    )
     LoggerUtils.print_simple_menu()
     out, _ = capsys.readouterr()
     assert "AI供应商状态" in out

@@ -16,8 +16,14 @@ try:
     from google import genai
     from google.genai import types
 except ImportError as e:
+    # 提供详细的错误信息以便诊断打包问题
+    import sys
+    error_details = f"原始错误: {type(e).__name__}: {e}"
+    if hasattr(sys, '_MEIPASS'):
+        # 在 PyInstaller 打包环境中
+        error_details += f"\n[PyInstaller 环境] 基础路径: {sys._MEIPASS}"
     raise ImportError(
-        "请安装 Google Generative AI SDK: pip install google-genai"
+        f"请安装 Google Generative AI SDK: pip install google-genai\n{error_details}"
     ) from e
 
 try:
@@ -62,6 +68,7 @@ class GeminiProvider(AIProvider):
         self.key_last_used_time: Dict[str, float] = {}
         self.key_cooldown_until: Dict[str, float] = {}
         self.first_actual_call = True
+        self.lock = threading.Lock()  # 用于多线程并发下的 Key 轮转同步
 
         # 初始化可用密钥和客户端
         self._initialize_api_keys()
@@ -448,64 +455,76 @@ class GeminiProvider(AIProvider):
         return self.client
 
     def _rotate_key(self, force_rotate: bool = False):
-        """轮转到下一个 API 密钥"""
+        """轮转到下一个 API 密钥（线程安全）"""
         if not self.api_keys:
             return
 
-        # 如果未启用自动轮转且不是强制轮转，则不进行轮转
-        if not self.auto_rotate and not force_rotate:
-            return
+        # 用于记录需要在锁外执行的等待时间
+        wait_time_outside_lock = 0.0
 
-        current_time = time.time()
-
-        for _ in range(len(self.api_keys)):
-            self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
-            next_key = self.api_keys[self.current_key_index]
-
-            cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
-            cooldown_remaining = max(0.0, cooldown_until - current_time)
-            time_since_last_use = current_time - self.key_last_used_time.get(
-                next_key, 0.0
-            )
-
-            if force_rotate:
-                logger.info(f"强制轮转: 新密钥索引: {self.current_key_index}")
-                self.key_last_used_time[next_key] = current_time
-                self._configure_client()
+        with self.lock:  # 使用线程锁确保整个轮转过程的原子性
+            # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+            if not self.auto_rotate and not force_rotate:
                 return
 
-            if cooldown_remaining <= 0:
-                if self.first_actual_call:
-                    logger.info(f"首次实际调用，密钥 {self.current_key_index} 可用")
-                    self.first_actual_call = False
-                elif time_since_last_use < 60:
-                    wait_time = 60 - time_since_last_use
-                    logger.info(
-                        f"密钥 {self.current_key_index} 需要等待: {wait_time:.1f}s"
-                    )
-                    time.sleep(wait_time)
+            current_time = time.time()
 
-                logger.info(f"密钥 {self.current_key_index} 可用")
-                self.key_last_used_time[next_key] = current_time
-                self._configure_client()
-                return
-            else:
-                logger.info(
-                    f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
+            for _ in range(len(self.api_keys)):
+                self.current_key_index = (self.current_key_index + 1) % len(
+                    self.api_keys
+                )
+                next_key = self.api_keys[self.current_key_index]
+
+                cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
+                cooldown_remaining = max(0.0, cooldown_until - current_time)
+                time_since_last_use = current_time - self.key_last_used_time.get(
+                    next_key, 0.0
                 )
 
-        max_cooldown = max(self.key_cooldown_until.values(), default=0) - current_time
-        if max_cooldown > 0:
-            logger.warning(f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s")
-            time.sleep(max_cooldown)
-            self._rotate_key(force_rotate=True)
+                if force_rotate:
+                    logger.info(f"强制轮转: 新密钥索引: {self.current_key_index}")
+                    self.key_last_used_time[next_key] = current_time
+                    self._configure_client()
+                    return
 
-    def _extract_retry_delay(self, error_msg: str) -> Optional[int]:
-        """从错误消息中提取重试延迟时间"""
-        retry_delay_match = re.search(r"'retryDelay': '(\d+)s'", error_msg)
-        if retry_delay_match:
-            try:
-                return int(retry_delay_match.group(1)) + 5  # 增加5秒缓冲
-            except ValueError:
-                pass
-        return None
+                if cooldown_remaining <= 0:
+                    if self.first_actual_call:
+                        logger.info(f"首次实际调用，密钥 {self.current_key_index} 可用")
+                        self.first_actual_call = False
+                    elif time_since_last_use < 60:
+                        # 记录需要等待的时间，稍后在锁外执行
+                        wait_time_outside_lock = 60 - time_since_last_use
+                        logger.info(
+                            f"密钥 {self.current_key_index} 需要等待: {wait_time_outside_lock:.1f}s"
+                        )
+
+                    logger.info(f"密钥 {self.current_key_index} 可用")
+                    self.key_last_used_time[next_key] = current_time
+                    self._configure_client()
+                    break  # 退出循环，稍后在锁外等待
+                else:
+                    logger.info(
+                        f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
+                    )
+            else:
+                # 所有密钥都在冷却中
+                max_cooldown = (
+                    max(self.key_cooldown_until.values(), default=0) - current_time
+                )
+                if max_cooldown > 0:
+                    wait_time_outside_lock = max_cooldown
+                    logger.warning(
+                        f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s"
+                    )
+
+        # 在锁外执行等待，避免长时间持有锁阻塞其他线程
+        if wait_time_outside_lock > 0:
+            time.sleep(wait_time_outside_lock)
+            # 等待后需要重新尝试轮转
+            if (
+                wait_time_outside_lock
+                == max(self.key_cooldown_until.values(), default=0)
+                - time.time()
+                + wait_time_outside_lock
+            ):
+                self._rotate_key(force_rotate=True)

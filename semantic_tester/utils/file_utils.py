@@ -99,6 +99,34 @@ class FileUtils:
             return None
 
     @staticmethod
+    def read_all_markdowns(directory: str) -> Optional[str]:
+        """
+        读取目录中所有 Markdown 文档并合并
+
+        Args:
+            directory: 知识库目录
+
+        Returns:
+            Optional[str]: 合并后的文档内容，如果目录不存在或无文件则返回 None
+        """
+        # 使用本类已有的方法查找文件
+        markdown_files = FileUtils.find_markdown_files(directory, recursive=True)
+        if not markdown_files:
+            return None
+
+        all_content = []
+        for file_path in markdown_files:
+            content = FileUtils.read_file_content(file_path)
+            if content:
+                file_name = os.path.basename(file_path)
+                all_content.append(f"# 文档: {file_name}\n\n{content}")
+
+        if not all_content:
+            return None
+
+        return "\n\n" + "=" * 80 + "\n\n".join(all_content)
+
+    @staticmethod
     def find_file_by_name(
         directory: str, filename: str, recursive: bool = True
     ) -> Optional[str]:

@@ -1,6 +1,10 @@
 from openpyxl import Workbook
 
-from semantic_tester.excel.utils import write_cell_safely, get_column_index, get_or_add_column
+from semantic_tester.excel.utils import (
+    write_cell_safely,
+    get_column_index,
+    get_or_add_column,
+)
 import pandas as pd
 
 

@@ -153,9 +153,7 @@ class Config:
         current_display = (
             "是"
             if current_value
-            else "否"
-            if isinstance(current_value, bool)
-            else str(current_value)
+            else "否" if isinstance(current_value, bool) else str(current_value)
         )
 
         user_input = input(f"{prompt} (当前: {current_display}): ").strip()

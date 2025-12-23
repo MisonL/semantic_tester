@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-AI客服问答语义比对工具 - PyInstaller 打包配置文件
+AI客服问答语义比对工具 - PyInstaller 打包配置文件 (Simplified)
 """
 
 import os
@@ -8,98 +8,37 @@ import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # 获取项目根目录
-# 使用 sys.argv[0] 获取spec文件路径，避免 __file__ 未定义错误
 spec_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-# 检查spec文件是否在项目根目录下
 if os.path.basename(spec_dir) == 'build':
-    # spec文件在build目录下
     project_root = os.path.abspath(os.path.join(spec_dir, '..'))
 else:
-    # spec文件在项目根目录下
     project_root = spec_dir
 
 # 主程序文件
 main_script = os.path.join(project_root, 'main.py')
 
-# 获取发布目录
-release_dir = os.path.join(project_root, 'release_windows')
-
 # 收集数据文件
 datas = [
-    # 配置文件模板
     (os.path.join(project_root, '.env.config.example'), '.'),
-    
-    # README文件（如果存在）
     (os.path.join(project_root, 'README.md'), '.',) if os.path.exists(os.path.join(project_root, 'README.md')) else None,
 ]
-
-# 过滤掉 None 值
 datas = [d for d in datas if d is not None]
 
-# 收集隐藏导入
-hiddenimports = [
-    'semantic_tester.api',
-    'semantic_tester.api.base_provider',
-    'semantic_tester.api.gemini_provider',
-    'semantic_tester.api.openai_provider',
-    'semantic_tester.api.dify_provider',
-    'semantic_tester.api.anthropic_provider',
-    'semantic_tester.api.iflow_provider',
-    'semantic_tester.api.provider_manager',
-    'semantic_tester.api.prompts',
-    'semantic_tester.config',
-    'semantic_tester.config.settings',
-    'semantic_tester.config.environment',
-    'semantic_tester.config.env_loader',
-    'semantic_tester.excel',
-    'semantic_tester.excel.processor',
-    'semantic_tester.ui',
-    'semantic_tester.ui.cli',
-'semantic_tester.utils',
-    # 以下模块已不再使用或由依赖自动处理，无需强制作为 hiddenimports
-    # 'semantic_tester.utils.file_handler',
-    # 'semantic_tester.utils.logger',
-    # 'google.generativeai',
-    # 'google.ai.generativelanguage',
-    # 'google.api_core',
-    'openai',
-    'requests',
-    'requests.adapters',
-    'requests.auth',
-    'requests.exceptions',
-    'requests.models',
-    'requests.sessions',
-    'requests.utils',
-    'openpyxl',
-    'openpyxl.workbook',
-    'openpyxl.worksheet',
-    'openpyxl.cell',
-    'openpyxl.styles',
-    'openpyxl.utils',
-    'pandas',
-    'colorama',
-    'colorama.ansi',
-    'colorama.initialise',
-    'colorama.win32',
-    'dotenv',
-    'ctypes',
-    'ctypes.wintypes',
-    'datetime',
-    'json',
-    'os',
-    'sys',
-    'time',
-    're',
-    'urllib.parse',
-    'threading',
-    'uuid',
-    'pathlib',
-]
+# 仅收集关键依赖，其他的让 PyInstaller 自动分析
+hiddenimports = []
 
-# 收集二进制文件
+# 收集 google.genai 依赖 (使用我们自定义的 hook 还不够，显式添加更保险)
+# 但不再添加庞大的无关列表
+hiddenimports += collect_submodules('google.genai')
+hiddenimports += collect_submodules('pydantic')
+
+# 收集数据文件
+datas += collect_data_files('google.genai')
+datas += collect_data_files('pydantic')
+
 binaries = []
 
-# 排除不需要的模块
+# 排除不需要的模块 (参考 dify_chat_tester)
 excludes = [
     'matplotlib',
     'scipy',
@@ -111,6 +50,8 @@ excludes = [
     'IPython',
     'jupyter',
     'notebook',
+    'PIL',
+    'cv2',
 ]
 
 a = Analysis(
@@ -119,9 +60,11 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[],
+    # 仍然使用我们的 hooks 目录，因为 hook-google.genai.py 很有用
+    hookspath=[os.path.join(spec_dir, 'hooks')], 
     hooksconfig={},
-    runtime_hooks=[],
+    # 保留 SSL 修复 hook，因为那是针对具体报错的修复
+    runtime_hooks=[os.path.join(spec_dir, 'rthooks', 'pyi_rth_ssl_fix.py')],
     excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -129,7 +72,7 @@ a = Analysis(
     noarchive=False,
 )
 
-# 移除不需要的二进制文件（Windows特定）
+# 移除 Windows 系统 DLL (参考 dify_chat_tester)
 for exclude in ['api-ms-win-*.dll', 'ucrtbase.dll', 'msvcp*.dll', 'vcruntime*.dll']:
     a.binaries = [x for x in a.binaries if not x[0].startswith(exclude)]
 
@@ -155,5 +98,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    # icon=os.path.join(project_root, 'assets', 'icon.ico'), # 如果有图标
 )

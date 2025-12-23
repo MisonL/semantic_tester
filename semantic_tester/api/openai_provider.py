@@ -61,6 +61,7 @@ class OpenAIProvider(AIProvider):
         self.key_last_used_time: Dict[str, float] = {}
         self.key_cooldown_until: Dict[str, float] = {}
         self.first_actual_call = True
+        self.lock = threading.Lock()  # 用于多线程并发下的同步
 
         # 初始化可用密钥和客户端
         self._initialize_api_keys()
@@ -328,8 +329,18 @@ class OpenAIProvider(AIProvider):
             logger.warning(f"OpenAI API 速率限制: {e}")
             if attempt < max_retries - 1:
                 retry_after = self._extract_retry_delay(str(e)) or default_retry_delay
-                logger.info(f"等待 {retry_after} 秒后重试")
-                time.sleep(retry_after)
+
+                logger.info(
+                    f"检测到 429 错误，标记当前密钥冷却并轮转 (冷却 {retry_after}s)"
+                )
+
+                # 标记当前密钥进入冷却
+                current_key = self.api_keys[self.current_key_index]
+                self.key_cooldown_until[current_key] = time.time() + retry_after
+
+                # 强制轮转到下一个可用密钥
+                self._rotate_key(force_rotate=True)
+
                 return "RETRY", ""
             else:
                 return "错误", "API 调用次数超限"
@@ -452,67 +463,52 @@ class OpenAIProvider(AIProvider):
         return self.client
 
     def _rotate_key(self, force_rotate: bool = False):
-        """轮转到下一个 API 密钥"""
+        """轮转到下一个 API 密钥（线程安全）"""
         if not self.api_keys:
             return
 
-        # 如果未启用自动轮转且不是强制轮转，则不进行轮转
-        if not self.auto_rotate and not force_rotate:
-            return
+        # 用于记录需要在锁外执行的等待时间
+        wait_time_outside_lock = 0.0
 
-        current_time = time.time()
-
-        for _ in range(len(self.api_keys)):
-            self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
-            next_key = self.api_keys[self.current_key_index]
-
-            cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
-            cooldown_remaining = max(0.0, cooldown_until - current_time)
-            time_since_last_use = current_time - self.key_last_used_time.get(
-                next_key, 0.0
-            )
-
-            if force_rotate:
-                logger.info(f"强制轮转: 新密钥索引: {self.current_key_index}")
-                self.key_last_used_time[next_key] = current_time
-                self._configure_client()
+        with self.lock:  # 使用线程锁确保整个轮转过程的原子性
+            # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+            if not self.auto_rotate and not force_rotate:
                 return
 
-            if cooldown_remaining <= 0:
-                if self.first_actual_call:
-                    logger.info(f"首次实际调用，密钥 {self.current_key_index} 可用")
-                    self.first_actual_call = False
-                elif time_since_last_use < 60:
-                    wait_time = 60 - time_since_last_use
-                    logger.info(
-                        f"密钥 {self.current_key_index} 需要等待: {wait_time:.1f}s"
-                    )
-                    time.sleep(wait_time)
+            current_time = time.time()
 
-                logger.info(f"密钥 {self.current_key_index} 可用")
-                self.key_last_used_time[next_key] = current_time
-                self._configure_client()
-                return
-            else:
-                logger.info(
-                    f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
+            for _ in range(len(self.api_keys)):
+                self.current_key_index = (self.current_key_index + 1) % len(
+                    self.api_keys
                 )
+                next_key = self.api_keys[self.current_key_index]
 
-        max_cooldown = max(self.key_cooldown_until.values(), default=0) - current_time
-        if max_cooldown > 0:
-            logger.warning(f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s")
-            time.sleep(max_cooldown)
-            self._rotate_key(force_rotate=True)
+                cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
+                cooldown_remaining = max(0.0, cooldown_until - current_time)
 
-    def _extract_retry_delay(self, error_msg: str) -> Optional[int]:
-        """从错误消息中提取重试延迟时间"""
-        import re
+                if cooldown_remaining <= 0:
+                    if self.first_actual_call:
+                        logger.info(f"首次实际调用，密钥 {self.current_key_index} 可用")
+                        self.first_actual_call = False
 
-        # 尝试匹配 "Please try again in Xs" 格式
-        retry_match = re.search(r"try again in (\d+)s", error_msg.lower())
-        if retry_match:
-            try:
-                return int(retry_match.group(1))
-            except ValueError:
-                pass
-        return None
+                    logger.info(f"密钥 {self.current_key_index} 可用")
+                    self.key_last_used_time[next_key] = current_time
+                    self._configure_client()
+                    break
+                else:
+                    logger.info(
+                        f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
+                    )
+            else:
+                max_cooldown = (
+                    max(self.key_cooldown_until.values(), default=0) - current_time
+                )
+                if max_cooldown > 0:
+                    wait_time_outside_lock = max_cooldown
+                    logger.warning(
+                        f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s"
+                    )
+
+        # 在锁外执行等待
+        if wait_time_outside_lock > 0:
+            time.sleep(wait_time_outside_lock)

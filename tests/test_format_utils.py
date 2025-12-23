@@ -36,12 +36,16 @@ def test_api_key_preview_and_clean_json_and_error_details():
     preview = FormatUtils.format_api_key_preview("abcdef0123456789")
     assert "..." in preview
 
-    assert FormatUtils.format_api_key_preview("", prefix_chars=3, suffix_chars=2) == "无"
+    assert (
+        FormatUtils.format_api_key_preview("", prefix_chars=3, suffix_chars=2) == "无"
+    )
 
-    json_text = "```json\n{\"a\": 1}\n```"
+    json_text = '```json\n{"a": 1}\n```'
     assert FormatUtils.clean_json_text(json_text) == '{"a": 1}'
 
-    details = FormatUtils.extract_error_details("ResourceExhausted: 'retryDelay': '60s'")
+    details = FormatUtils.extract_error_details(
+        "ResourceExhausted: 'retryDelay': '60s'"
+    )
     assert details["type"] == "速率限制错误"
     assert details["retry_delay"] == "60s"
 

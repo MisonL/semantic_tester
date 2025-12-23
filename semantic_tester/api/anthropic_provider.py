@@ -49,6 +49,7 @@ class AnthropicProvider(AIProvider):
         self.key_last_used_time: Dict[str, float] = {}
         self.key_cooldown_until: Dict[str, float] = {}
         self.first_actual_call = True
+        self.lock = threading.Lock()  # 用于多线程并发下的同步
 
         # 批量处理配置
         self.batch_config = config.get("batch", {})
@@ -448,13 +449,24 @@ class AnthropicProvider(AIProvider):
                 "reason": "缺少依赖",
             }
         except Exception as e:
+            error_msg = str(e)
+            if "rate_limit" in error_msg.lower() or "429" in error_msg:
+                # 记录速率限制并设置冷却
+                current_key = self.api_keys[self.current_key_index]
+                delay = self._extract_retry_delay(error_msg) or 60
+                self.key_cooldown_until[current_key] = time.time() + delay
+                logger.warning(
+                    f"Anthropic 达到速率限制，密钥 {self.current_key_index} 进入冷却 ({delay}s)，准备轮转..."
+                )
+                self._rotate_key(force_rotate=True)
+
             logger.error(f"Anthropic 语义分析失败: {e}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": error_msg,
                 "is_consistent": False,
                 "confidence": 0.0,
-                "reason": f"API调用失败: {str(e)}",
+                "reason": f"API调用失败: {error_msg}",
             }
 
     def _build_analysis_prompt(self, question: str, answer: str, knowledge: str) -> str:
@@ -595,98 +607,52 @@ class AnthropicProvider(AIProvider):
         return self.client
 
     def _rotate_key(self, force_rotate: bool = False):
-        """轮转到下一个 API 密钥"""
+        """轮转到下一个 API 密钥（线程安全）"""
         if not self.api_keys:
             return
 
-        # 如果未启用自动轮转且不是强制轮转，则不进行轮转
-        if not self.auto_rotate and not force_rotate:
-            return
+        # 用于记录需要在锁外执行的等待时间
+        wait_time_outside_lock = 0.0
 
-        current_time = time.time()
-
-        for _ in range(len(self.api_keys)):
-            self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
-            next_key = self.api_keys[self.current_key_index]
-
-            cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
-            cooldown_remaining = max(0.0, cooldown_until - current_time)
-            time_since_last_use = current_time - self.key_last_used_time.get(
-                next_key, 0.0
-            )
-
-            if force_rotate:
-                logger.info(f"强制轮转: 新密钥索引: {self.current_key_index}")
-                self.key_last_used_time[next_key] = current_time
-                self._configure_client()
+        with self.lock:  # 使用线程锁确保整个轮转过程的原子性
+            # 如果未启用自动轮转且不是强制轮转，则不进行轮转
+            if not self.auto_rotate and not force_rotate:
                 return
 
-            if cooldown_remaining <= 0:
-                if self.first_actual_call:
-                    logger.info(f"首次实际调用，密钥 {self.current_key_index} 可用")
-                    self.first_actual_call = False
-                elif time_since_last_use < 60:
-                    wait_time = 60 - time_since_last_use
+            current_time = time.time()
+
+            for _ in range(len(self.api_keys)):
+                self.current_key_index = (self.current_key_index + 1) % len(
+                    self.api_keys
+                )
+                next_key = self.api_keys[self.current_key_index]
+
+                cooldown_until = self.key_cooldown_until.get(next_key, 0.0)
+                cooldown_remaining = max(0.0, cooldown_until - current_time)
+
+                if cooldown_remaining <= 0:
+                    if self.first_actual_call:
+                        logger.info(f"首次实际调用，密钥 {self.current_key_index} 可用")
+                        self.first_actual_call = False
+
+                    logger.info(f"密钥 {self.current_key_index} 可用")
+                    self.key_last_used_time[next_key] = current_time
+                    self._configure_client()
+                    return
+                else:
                     logger.info(
-                        f"密钥 {self.current_key_index} 需要等待: {wait_time:.1f}s"
+                        f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
                     )
-                    time.sleep(wait_time)
-
-                logger.info(f"密钥 {self.current_key_index} 可用")
-                self.key_last_used_time[next_key] = current_time
-                self._configure_client()
-                return
             else:
-                logger.info(
-                    f"密钥 {self.current_key_index} 冷却中: 剩余 {cooldown_remaining:.1f}s"
+                max_cooldown = (
+                    max(self.key_cooldown_until.values(), default=0) - current_time
                 )
+                if max_cooldown > 0:
+                    wait_time_outside_lock = max_cooldown
+                    logger.warning(
+                        f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s"
+                    )
 
-        max_cooldown = max(self.key_cooldown_until.values(), default=0) - current_time
-        if max_cooldown > 0:
-            logger.warning(f"所有密钥不可用，等待最长冷却时间: {max_cooldown:.1f}s")
-            time.sleep(max_cooldown)
-            self._rotate_key(force_rotate=True)
-
-    def batch_analyze(self, items: list, progress_callback=None) -> list:
-        """
-        批量语义分析
-
-        Args:
-            items: 待分析的项目列表
-            progress_callback: 进度回调函数
-
-        Returns:
-            list: 分析结果列表
-        """
-        results = []
-        total = len(items)
-
-        for i, item in enumerate(items, 1):
-            try:
-                result = self.analyze_semantic(
-                    item["question"], item["answer"], item["knowledge"]
-                )
-                result["row_number"] = item.get("row_number", i)
-                results.append(result)
-
-                # 调用进度回调
-                if progress_callback:
-                    progress_callback(i, total, result)
-
-                # 批量处理间隔
-                if i < total:
-                    time.sleep(self.batch_config.get("request_interval", 1.0))
-
-            except Exception as e:
-                logger.error(f"批量分析第 {i} 项失败: {e}")
-                error_result = {
-                    "success": False,
-                    "error": str(e),
-                    "is_consistent": False,
-                    "confidence": 0.0,
-                    "reason": f"处理失败: {str(e)}",
-                    "row_number": item.get("row_number", i),
-                }
-                results.append(error_result)
-
-        return results
+        # 在锁外执行等待
+        if wait_time_outside_lock > 0:
+            time.sleep(wait_time_outside_lock)

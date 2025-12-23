@@ -1,0 +1,17 @@
+[
+  {
+    "channel_id": 1,
+    "concurrency": 5,
+    "worker_id": 0
+  },
+  {
+    "channel_id": 2,
+    "concurrency": 5,
+    "worker_id": 1
+  },
+  {
+    "channel_id": 3,
+    "concurrency": 3,
+    "worker_id": 2
+  }
+]

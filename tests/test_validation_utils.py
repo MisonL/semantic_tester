@@ -15,7 +15,10 @@ def test_is_valid_file_and_directory_path():
         assert ValidationUtils.is_valid_file_path("", [".xlsx"]) is False
 
         assert ValidationUtils.is_valid_directory_path(tmpdir) is True
-        assert ValidationUtils.is_valid_directory_path(os.path.join(tmpdir, "nope")) is False
+        assert (
+            ValidationUtils.is_valid_directory_path(os.path.join(tmpdir, "nope"))
+            is False
+        )
 
 
 def test_is_valid_gemini_api_key_and_email_url():
@@ -48,7 +51,10 @@ def test_validate_column_mapping_and_string_numeric_range_row_data():
 
     assert ValidationUtils.validate_numeric_range("10", min_val=0, max_val=20) is True
     assert ValidationUtils.validate_numeric_range("bad", min_val=0, max_val=20) is False
-    assert ValidationUtils.validate_string_length("abc", min_length=1, max_length=5) is True
+    assert (
+        ValidationUtils.validate_string_length("abc", min_length=1, max_length=5)
+        is True
+    )
     assert ValidationUtils.validate_string_length("", min_length=1) is False
 
     row_errors = ValidationUtils.validate_row_data(
@@ -56,9 +62,7 @@ def test_validate_column_mapping_and_string_numeric_range_row_data():
     )
     assert "问题内容为空" in row_errors
 
-    row_errors = ValidationUtils.validate_row_data(
-        {"question": "q", "ai_answer": " "}
-    )
+    row_errors = ValidationUtils.validate_row_data({"question": "q", "ai_answer": " "})
     assert "AI回答内容为空" in row_errors
 
 
@@ -125,9 +129,7 @@ def test_additional_validation_utils_edges(monkeypatch, tmp_path):
     assert ValidationUtils.validate_string_length("abc", max_length=2) is False
 
     # validate_required_fields 对空字符串视为缺失
-    missing = ValidationUtils.validate_required_fields(
-        {"a": "", "b": "ok"}, ["a", "b"]
-    )
+    missing = ValidationUtils.validate_required_fields({"a": "", "b": "ok"}, ["a", "b"])
     assert missing == ["a"]
 
     # sanitize_filename 在空字符串时回退为 "unnamed"，其他情况只需移除不安全字符
