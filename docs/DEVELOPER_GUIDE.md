@@ -308,7 +308,7 @@ logger.info("API调用统计", extra={
 ### Docker 部署
 
 ```dockerfile
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 COPY requirements.txt .
