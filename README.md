@@ -5,422 +5,147 @@
 <img src="https://img.shields.io/badge/Python-3.9+-blue?logo=python" alt="Python版本">
 <img src="https://img.shields.io/badge/License-MIT-green" alt="许可证">
 <img src="https://img.shields.io/badge/Version-4.0.0-orange" alt="版本">
-<img src="https://img.shields.io/badge/Architecture-Modular-purple" alt="架构">
-<img src="https://img.shields.io/badge/Type%20Safety-100%25-brightgreen" alt="类型安全">
-<img src="https://img.shields.io/badge/Code%20Quality-Production%20Ready-blue" alt="代码质量">
+<img src="https://img.shields.io/badge/Architecture-Multi--Channel-purple" alt="架构">
+<img src="https://img.shields.io/badge/Performance-High%20Concurrency-red" alt="性能">
+<img src="https://img.shields.io/badge/Logic-Semantic%20Analysis-blue" alt="逻辑">
 </div>
 
 ## 📖 简介
 
-这是一个用于评估 AI 客服回答与源知识库文档内容在语义上是否相符的 Python 工具。
+这是一个用于评估 AI 客服回答与源知识库文档内容在语义上是否相符的专业工具。它旨在解决 AI 客服评估过程中的“幻觉检测”问题。
 
-**🔥 已完美集成 [Dify 聊天客户端测试工具](https://github.com/MisonL/dify_chat_tester) 项目，支持直接读取其输出文件进行语义评估！**
+**🔥 现已全面升级为多渠道高并发架构！支持同时驱动多个 API 密钥，处理速度提升 10 倍以上。**
 
-它通过调用 AI 供应商的 API（支持 Gemini、OpenAI、Anthropic、Dify、iFlow），对给定的问题、AI 客服回答和源文档内容进行比对，判断 AI 客服的回答是否能够从源文档中合理推断，或是否与源文档的核心信息一致。
-
-工具支持多密钥轮转、速率限制处理，并能从 Excel 文件读取数据，将比对结果实时写入 Excel。
+它通过调用主流 AI 供应商（Gemini, OpenAI, Anthropic, iFlow, Dify），对给定的问题、AI 回答和源文档进行深度解析，自动判断一致性并给出详细的判断理由。
 
 ### 📸 界面预览
 
 ![并发处理界面](docs/images/Xnip2025-12-23_11-27-26.jpg)
 
-_v4.0.0 全新并发处理界面：全屏模式、实时进度、智能结果预览_
-
-## ✨ 核心特性
-
-### 🚀 多渠道并发处理 (v4.0.0 新特性)
-
-- **多渠道配置系统**: 支持 `AI_CHANNEL_*` 环境变量配置多个独立渠道
-- **渠道级别并发**: 每个渠道可独立配置并发数，自动分配任务
-- **API 密钥预校验**: 启动时验证所有渠道，自动剔除失效渠道
-- **全屏实时 UI**: 彻底消除终端残影，实时显示处理状态
-
-### ✨ WorkerTableUI 全新交互体验 (v4.0.0)
-
-- **全屏模式渲染**: 使用 `rich.Live` 全屏模式，无残影无闪烁
-- **实时状态显示**: 当前问题、处理状态、回复预览一目了然
-- **智能结果解析**: JSON 结果自动格式化为 `是/否/不确定 | 理由` 格式
-- **简洁状态图标**: 🔍 分析中 / 💭 思考中 / ✅ 完成 / ❌ 错误
-
-### 🧠 多供应商智能语义比对
-
-- **多 AI 供应商支持**: Gemini、OpenAI、Anthropic、Dify、iFlow
-- 统一的语义分析接口，供应商间无缝切换
-- 判断 AI 回答与知识库文档的语义一致性
-- 输出标准化的比对结果和判断依据
-
-### ⚙️ 多供应商 API 管理
-
-- **统一供应商管理**: 支持同时配置多个 AI 供应商
-- **智能密钥轮转**: Gemini 多密钥自动轮转和冷却处理
-- **容错机制**: 速率限制自动重试，供应商故障自动切换
-- **灵活配置**: 支持 .env.config 文件、环境变量、交互式配置
-
-### 📊 实时 Excel 处理
-
-- **增量保存**: 每条记录处理后立即保存结果
-- 灵活列名配置，支持自定义列
-- 自动创建结果列（语义是否相符/判断依据）
-- 合并单元格安全写入
-
-### 📂 知识库集成
-
-- Markdown 格式文档支持
-- 按文件名自动匹配（`文档名称`列 → `处理后/文档.md`)
-
-### 📝 完善日志
-
-- 详细的运行日志输出到 `logs/semantic_test.log` 文件
-- 控制台实时显示处理进度和关键信息
-
-### 🏗️ 模块化架构 (v3.0.0+)
-
-- **清晰的模块分离**: API、Excel、UI、配置、工具模块独立
-- **易于维护和扩展**: 每个模块职责单一，便于功能扩展
-- **配置管理**: 支持配置文件持久化和用户自定义设置
-- **多种运行模式**: 交互式菜单模式和命令行快速处理模式
-
-### 🔗 Dify 集成支持
-
-- **智能格式检测**: 自动识别 Dify Chat Tester 输出格式
-- **动态供应商支持**: 支持所有 AI 供应商（Dify、OpenAI 兼容、iFlow 及自定义）
-- **智能列映射**: 自动适配列映射（原始问题 → 问题点，{供应商名称}响应 →AI 客服回答）
-- **无缝数据流**: 无需格式转换，直接使用 Dify 输出文件
-
-### 🛡️ 类型安全 (v3.0.0+)
-
-- **100% 类型安全**: 所有 Pylance 警告已修复
-- **完善的类型注解**: 使用现代 Python 类型系统
-- **静态检查通过**: 符合生产环境代码质量标准
-
-## 🔑 获取 API 密钥
-
-### Gemini API
-
-1. **访问 Google AI Studio**：[https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) 或 Google Cloud Console
-2. **创建或获取** 您的 Gemini API 密钥（支持多个密钥轮转）
-
-### OpenAI API
-
-1. **访问 OpenAI Platform**：[https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-2. **创建新的 API 密钥**
-
-### Dify API
-
-1. **访问 Dify 工作台**：登录您的 Dify 账户
-2. **获取应用 API 密钥**：从应用设置中获取 API 密钥
-3. **获取 API 地址**：私有化部署需要配置正确的 API 地址
-
-### Anthropic API
-
-1. **访问 Anthropic Console**：[https://console.anthropic.com](https://console.anthropic.com)
-2. **创建 API 密钥**：从账户设置中创建新的 API 密钥
-3. **支持的模型**：claude-3-5-sonnet-20241022、claude-3-opus-20240229 等
-
-### iFlow API（推荐）
-
-1. **访问 iFlow 平台**：[https://platform.iflow.cn/profile?tab=apiKey](https://platform.iflow.cn/profile?tab=apiKey)
-2. **注册账户并获取 API 密钥**：从控制台获取 iFlow API 密钥
-3. **支持的模型**：qwen3-max、kimi-k2-0905、glm-4.6、deepseek-v3.2 等
-4. **推荐理由**：稳定性好、响应速度快、支持多种主流模型
-
-## ⬇️ 安装
-
-### 使用 UV（推荐）
-
-```bash
-# 确保已安装 Python 3.9+
-# 克隆仓库
-# git clone https://github.com/MisonL/semantic_tester.git (假设的仓库地址)
-# cd semantic_tester
-
-# 安装依赖
-uv sync
-```
-
-### 使用 pip
-
-```bash
-# 确保已安装 Python 3.9+
-# 克隆仓库
-# git clone https://github.com/MisonL/semantic_tester.git (假设的仓库地址)
-# cd semantic_tester
-
-# 安装依赖
-pip install -r requirements.txt
-```
-
-## 🚦 使用指南
-
-### 1. 配置 API 密钥
-
-#### 方法一：使用 .env.config 文件（推荐）
-
-> 首次运行程序或解压打包版本时，如果当前目录不存在 `.env.config`，程序会自动：
->
-> - 优先复制 `.env.config.example` 生成 `.env.config`
-> - 若模板缺失，则根据内置默认配置生成一个 `.env.config`
->
-> 因此，**一般只需要直接编辑自动生成的 `.env.config` 即可。**
-
-如需手动创建或重置配置文件：
-
-1. 复制配置模板：`cp .env.config.example .env.config`
-2. 编辑 `.env.config` 文件，配置您的 API 密钥：
-
-```bash
-# Gemini API（支持多密钥轮转）
-# 推荐使用 GEMINI_API_KEY，兼容 GEMINI_API_KEYS
-GEMINI_API_KEY=your-gemini-key1,your-gemini-key2
-
-# OpenAI API
-OPENAI_API_KEY=sk-your-openai-key
-
-# Dify API
-DIFY_API_KEY=app-your-dify-key
-DIFY_BASE_URL=https://api.dify.ai/v1
-
-# Anthropic API
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
-ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
-
-# iFlow API
-IFLOW_API_KEY=sk-your-iflow-key
-IFLOW_MODEL=qwen3-max
-IFLOW_BASE_URL=https://apis.iflow.cn/v1
-
-# === 其他配置 ===
-ENABLE_THINKING=true  # 是否显示 AI 思考过程 (默认: true)
-
-# AI 提示词自定义 (可选)
-# 可自定义语义检查提示词，支持占位符: {question} {ai_answer} {source_document}
-SEMANTIC_CHECK_PROMPT=请判断以下AI客服回答与源知识库文档内容在语义上是否相符。判断标准：...
-```
-
-#### 💡 AI 提示词自定义（高级功能）
-
-本工具支持自定义语义检查提示词，您可以根据需求调整 AI 的判断标准和行为：
-
-**配置方式：**
-在 `.env.config` 文件中设置 `SEMANTIC_CHECK_PROMPT` 参数。
-
-**使用场景：**
-
-- 🔍 **更严格的判断**：要求 AI 更严格地匹配源文档
-- 🎯 **更宽松的判断**：允许合理的语义推断
-- 🌐 **多语言支持**：使用英文或其他语言的提示词
-- 📋 **特定领域**：针对特定行业添加专业判断标准
-
-**示例：**
-
-```ini
-# 更严格的判断标准
-SEMANTIC_CHECK_PROMPT=你是一个严格的质量检查员。请非常严格地判断AI回答是否与源文档完全一致...
-
-# 更宽松的判断标准
-SEMANTIC_CHECK_PROMPT=你是一个友好的质量审核员。请判断AI回答是否与源文档的核心意思一致...
-```
-
-详细配置说明请参考：[AI_PROMPT_CONFIG.md](docs/AI_PROMPT_CONFIG.md)
-
-#### 方法二：环境变量
-
-```bash
-# 推荐使用 GEMINI_API_KEY，兼容 GEMINI_API_KEYS
-export GEMINI_API_KEY='API_KEY_1,API_KEY_2'
-export OPENAI_API_KEY='sk-your-openai-key'
-export DIFY_API_KEY='app-your-dify-key'
-export IFLOW_API_KEY='sk-your-iflow-key'
-```
-
-#### 方法三：程序内交互式配置
-
-程序运行时可通过菜单动态配置 API 密钥（临时生效）
-
-（可选）指定 Gemini 模型版本：
-
-```bash
-export GEMINI_MODEL='models/gemini-2.5-flash'  # 默认值
-```
-
-### 2. 准备 Excel 文件
-
-创建 Excel 文件（例如 `问答测试用例.xlsx`）需包含以下列（名称可自定义）：
-
-- **文档名称**: 对应知识库文件名（如 `产品手册.md`）
-- **问题点**: 用户提问内容
-- **AI 客服回答**: AI 生成的回答内容
-
-### 3. 准备知识库文档
-
-将 Markdown 格式的知识库文档放置在 `处理后/` 目录（默认示例）：
-
-```
-处理后/
-  产品手册.md
-  常见问题.md
-  使用指南.md
-```
-
-### 4. 运行程序
-
-#### 交互式菜单模式（推荐）
-
-```bash
-# 使用 uv 运行（推荐）
-uv run python main.py
-
-# 或使用模块方式
-uv run python -m semantic_tester
-
-# 或直接运行
-python main.py
-```
-
-#### 命令行模式（快速处理）
-
-```bash
-# 指定 Excel 文件和知识库目录
-uv run python main.py 问答测试用例.xlsx 处理后/
-
-# 仅指定 Excel 文件（知识库目录会交互式询问）
-uv run python main.py 问答测试用例.xlsx
-```
-
-程序将通过命令行交互引导您完成 Excel 文件选择、知识库目录指定、以及各列的配置。
-
-#### 🚀 与 Dify Chat Tester 配合使用
-
-```bash
-# 1. 使用 Dify Chat Tester 生成批量测试数据
-cd /path/to/dify_chat_tester
-python main.py  # 选择批量模式
-
-# 2. 使用 Semantic Tester 进行语义评估
-cd /path/to/semantic_tester
-uv run python main.py  # 选择 Dify 输出文件，程序会自动检测格式
-```
-
-### 5. 查看结果
-
-程序运行完成后，会在您指定的 Excel 文件中新增或更新 `语义是否与源文档相符` 和 `判断依据` 两列，并填充比对结果。
-
-详细的运行日志会输出到 `logs/semantic_test.log` 文件中。
-
-## 🏗️ 项目架构
-
-### 模块化结构 (v3.0.0)
-
-```
-semantic_tester/
-├── __init__.py              # 包初始化
-├── __main__.py              # 模块入口点
-├── api/                     # API 接口层
-│   ├── __init__.py
-│   ├── base_provider.py     # 供应商基类
-│   ├── gemini_provider.py   # Gemini API 处理
-│   ├── openai_provider.py   # OpenAI API 处理
-│   ├── anthropic_provider.py# Anthropic API 处理
-│   ├── dify_provider.py     # Dify API 处理
-│   ├── iflow_provider.py    # iFlow API 处理
-│   ├── provider_manager.py  # 供应商管理器
-│   └── prompts.py           # 提示词模板
-├── config/                  # 配置管理层
-│   ├── __init__.py
-│   ├── environment.py       # 环境变量管理
-│   ├── settings.py          # 配置文件管理
-│   └── env_loader.py        # 配置加载器
-├── excel/                   # Excel 处理层
-│   ├── __init__.py
-│   └── processor.py         # Excel 数据处理
-├── ui/                      # 用户界面层
-│   ├── __init__.py
-│   ├── cli.py               # 命令行界面
-│   ├── terminal_ui.py       # 终端界面
-│   └── menu.py              # 交互式菜单（已废弃）
-└── utils/                   # 工具函数层
-    ├── __init__.py
-    ├── file_utils.py        # 文件操作工具
-    ├── format_utils.py      # 格式化工具
-    ├── logger_utils.py      # 日志工具
-    ├── validation_utils.py  # 验证工具
-    └── dify_template_generator.py  # Dify 模板生成器
-```
-
-### 代码质量保证
-
-- ✅ **类型安全**: 100% Pylance 警告修复
-- ✅ **代码风格**: 符合 Black 标准
-- ✅ **语法检查**: 所有文件通过编译检查
-- ✅ **模块导入**: 完整的导入链测试
-- ✅ **功能测试**: 核心组件验证通过
-
-## ⚠️ 注意事项
-
-1. **API Key 配置**：请确保您的 API 密钥正确且已启用相应服务 (Gemini/OpenAI/Dify/iFlow)
-2. **网络连接**：确保程序运行环境网络连接正常
-3. **Excel 文件格式**：请确保输入的 Excel 文件格式正确，`文档名称`、`问题点` 和 `AI客服回答` 列的数据有效
-4. **知识库文档**：确保 `处理后/` 目录下存在与 Excel 中 `文档名称` 对应的 Markdown 文件
-5. **数据安全**：程序会实时保存 Excel 文件的处理进度，以防意外中断导致数据丢失
-6. **思维链显示**：默认开启 AI 思考过程显示，可通过 `.env.config` 中的 `ENABLE_THINKING` 参数关闭
-
-## 📈 版本历史
-
-[查看完整版本历史](CHANGELOG.md)
-
-## 📦 构建与发布
-
-本项目提供了完整的构建脚本，支持生成 macOS 和 Windows 平台的可执行文件。
-
-### 构建环境准备
-
-确保已安装 `uv` 和 `pyinstaller`：
-
-```bash
-uv sync
-```
-
-### macOS 构建
-
-运行构建脚本：
-
-```bash
-chmod +x build/build_macos.sh
-./build/build_macos.sh
-```
-
-构建产物将位于 `release_macos/` 目录。
-
-### Windows 构建
-
-运行批处理脚本：
-
-```cmd
-build\build_windows.bat
-```
-
-构建产物将位于 `release_windows/` 目录。
-
-## 📜 许可证
-
-- **许可证类型**: [MIT 许可证](LICENSE)
-- **中文版本**: [查看中文版许可证](LICENSE-CN)
-
-## 👤 作者
-
-- **姓名**: Mison
-- **邮箱**: 1360962086@qq.com
-- **GitHub**: [MisonL](https://github.com/MisonL)
+_v4.0.0 全屏实时渲染界面：多 Worker 并行，秒级显示回复预览与智能解析逻辑_
 
 ---
 
-## 🏆 项目状态
+## ✨ v4.0.0 核心突破
 
-**✅ 生产就绪 - 代码质量达到企业级标准**
+### ⚡ 多渠道高并发引擎
 
-- 🛡️ **类型安全**: 100% 类型注解覆盖
-- 🔧 **代码质量**: 通过所有静态检查
-- 📊 **功能完整**: 所有核心功能正常
-- 🏗️ **架构清晰**: 模块化设计，易于维护
-- 📚 **文档完善**: 详细的使用和开发文档
-- 🎨 **界面美观**: 现代化的终端交互界面
+- **渠道级扩展**: 通过 `AI_CHANNEL_N` 配置多个独立渠道，每个渠道可拥有不同的服务商和并发数。
+- **任务自动均衡**: 系统自动将 Excel 任务分发至所有活跃渠道，压榨硬件与带宽极限。
+- **动态性能调整**: 支持通过 `ai_config.json` 实时调整各渠道的并发权重 (`concurrency`)。
+
+### 🛡️ 智能预检与自愈
+
+- **API 密钥自动验证**: 启动时自动拨测所有已配置渠道，静默剔除失效/受限密钥，确保任务无感中断。
+- **鲁棒的异常重试**: 针对网络抖动、模型过载自动执行指数退避重试。
+
+### 🖥️ WorkerTableUI 极致终端体验
+
+- **全屏 Live 渲染**: 使用 `rich.Live` 全屏接管终端，彻底告别滚动残影。
+- **流式预览系统**: 实时观察 AI 的思考脉络（Thinking）和正待生成的回复片段。
+- **结果智能映射**: 自动提取语义分析的核心结论（是/否/不确定），并进行色彩高亮标注。
+
+### 🔗 Dify 生态无缝集成
+
+- **原生读取**: 直接解析 `dify_chat_tester` 生成的 Excel 报表，无需任何预处理。
+- **自动映射**: 智能识别“原始问题”、“AI 响应”等字段，实现“点击即运行”的自动化流。
+
+---
+
+## 🛠️ 快速上手
+
+### 1. 环境准备
+
+推荐使用 **Bun** (Node 侧) 与 **UV** (Python 侧) 工具链以获得极致体验。
+
+```bash
+# 确保已安装 Python 3.10+
+# 克隆仓库
+git clone https://github.com/MisonL/semantic_tester.git
+cd semantic_tester
+
+# 安装依赖
+uv sync
+```
+
+### 2. 配置渠道
+
+1. 复制配置模板：`cp .env.config.example .env`
+2. 编辑 `.env` 文件，配置您的 AI 渠道：
+
+```bash
+# =================== 多渠道高并发配置 ===================
+# 示例：配置两个不同的 iFlow 渠道来实现负载均衡
+AI_CHANNEL_1_NAME=iFlow-Main
+AI_CHANNEL_1_API_KEY=sk-your-key-1
+AI_CHANNEL_1_CONCURRENCY=10
+
+AI_CHANNEL_2_NAME=iFlow-Backup
+AI_CHANNEL_2_API_KEY=sk-your-key-2
+AI_CHANNEL_2_CONCURRENCY=5
+
+# Gemini 示例
+AI_CHANNEL_3_NAME=Gemini-Flash
+AI_CHANNEL_3_API_KEY=your-gemini-key
+AI_CHANNEL_3_CONCURRENCY=2
+
+# 也可以配置传统的全局密钥 (兼容模式)
+IFLOW_API_KEY=sk-xxx
+IFLOW_MODEL=qwen3-max
+```
+
+> **💡 提示词调优**: 您可以通过修改 `SEMANTIC_CHECK_PROMPT` 来自定义判断逻辑。详细文档请见 [AI_PROMPT_CONFIG.md](docs/AI_PROMPT_CONFIG.md)。
+
+### 3. 准备数据
+
+- **Excel**: 包含 `问题点`、`AI客服回答`、以及 `文档名称`。
+- **知识库**: 将 Markdown 文档放至 `处理后/` 目录中，文件名对应 Excel 中的文档名称。
+
+### 4. 启动运行
+
+```bash
+# 交互模式
+uv run python main.py
+
+# 快速模式
+uv run python main.py <Excel路径> <知识库路径>
+```
+
+---
+
+## 🏗️ 项目架构 (v4.0.0 Modularity)
+
+```
+semantic_tester/
+├── api/             # 供应商驱动框架 (Gemini, OpenAI, iFlow, Dify...)
+├── config/          # 高级环境配置管理 (Multi-Channel 核心逻辑)
+├── excel/           # 线程安全的 Excel 并行读写引擎
+├── ui/              # 基于 Rich 的 Worker 集群状态渲染
+└── utils/           # 格式化、日志、JSON 手术刀解析工具
+```
+
+---
+
+## 📦 打包与分发
+
+项目支持生成跨平台可执行文件（已集成 Windows SSL DLL 修复补丁）：
+
+- **macOS**: `bash build/build_macos.sh`
+- **Windows**: `build\build_windows.bat`
+- **发布**: `bash build/publish_release.sh` (自动生成 GitHub/GitLab Release 并在企微播报)
+
+---
+
+## 📜 许可证
+
+本项目基于 [MIT 许可证](LICENSE)。
+
+## 👤 作者
+
+- **作者**: Mison
+- **邮箱**: 1360962086@qq.com
+- **主站**: [GitHub/MisonL](https://github.com/MisonL)
+
+---
+
+**✅ 经深度优化的生产级工具，助您轻松掌控大规模 QA 语义评估。**

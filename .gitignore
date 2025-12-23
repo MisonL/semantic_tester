@@ -60,4 +60,3 @@ release_windows/
 *.exe
 
 # Build scripts
-build/publish_release.sh
