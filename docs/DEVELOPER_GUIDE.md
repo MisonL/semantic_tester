@@ -56,7 +56,7 @@ Excel文件 → 任务队列 ─┬→ Channel 1 (Worker 1-N) ─┬→ 结果�
 
 ### 环境要求
 
-- Python 3.9+
+- Python 3.10+
 - UV (推荐) 或 pip
 - Git
 
