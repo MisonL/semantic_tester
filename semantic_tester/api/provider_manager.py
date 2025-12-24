@@ -299,30 +299,9 @@ class ProviderManager:
         if not provider.is_configured():
             return "错误", f"供应商 {provider.name} 未正确配置"
 
-        if stream and not stream_callback:
-            from semantic_tester.ui.terminal_ui import console, Icons
-            from rich.text import Text
-            from rich.panel import Panel
-            from rich import box
-
-            # 创建问题和回答的预览面板
-            content = Text()
-            content.append(f"{Icons.QUESTION} 问题: ", style="bold yellow")
-            question_text = question[:100] + "..." if len(question) > 100 else question
-            content.append(f"{question_text}\n\n", style="white")
-
-            content.append("💬 回答: ", style="bold yellow")
-            answer_text = ai_answer[:200] + "..." if len(ai_answer) > 200 else ai_answer
-            content.append(f"{answer_text}", style="white")
-
-            panel = Panel(
-                content,
-                title="[bold]📝 评估内容预览[/bold]",
-                border_style="bright_cyan",
-                box=box.ROUNDED,
-                padding=(0, 1),
-            )
-            console.print(panel)
+        # 注意：在并发模式下 (stream_callback 存在时)，不要执行 console.print
+        # 否则会干扰 WorkerTableUI 的全屏 Live 渲染
+        # 仅在非并发模式（stream_callback 为 None）且启用流式时显示预览面板
 
         return provider.check_semantic_similarity(
             question,
