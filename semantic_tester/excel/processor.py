@@ -330,9 +330,12 @@ class ExcelProcessor:
         """
         print("\n已配置列映射：")
 
-        # 文档名称列 - 自动添加的列固定为序号0
-        doc_col_num = 0  # 自动添加的文档名称列始终是序号0
-        print(f"  • 文档名称: 序号 {doc_col_num} ('文档名称' - 自动添加)")
+        # 文档名称列
+        doc_col_num = column_mapping.get("doc_name_col_index", 0)
+        if doc_col_num == -1:
+             print("  • 文档名称: [未设置] (默认: 未知文档)")
+        else:
+            print(f"  • 文档名称: 序号 {doc_col_num} ('文档名称' - 自动添加)")
 
         # 问题点列 - 使用原Excel列序号
         question_col_num = column_mapping["question_col_index"] + 1
@@ -370,7 +373,7 @@ class ExcelProcessor:
         """
         # 获取"文档名称"列
         doc_name_col_index = self._get_column_index_by_input(
-            "文档名称", '请输入"文档名称"所在列的名称或序号'
+            "文档名称", '请输入"文档名称"所在列的名称或序号 (按回车跳过, 默认为"未知文档")', optional=True
         )
 
         # 获取"问题点"列
@@ -389,18 +392,25 @@ class ExcelProcessor:
             "ai_answer_col_index": ai_answer_col_index,
         }
 
-    def _get_column_index_by_input(self, column_type: str, prompt: str) -> int:
+    def _get_column_index_by_input(
+        self, column_type: str, prompt: str, optional: bool = False
+    ) -> int:
         """
         根据用户输入获取列索引
 
         Args:
             column_type: 列类型（用于错误消息）
             prompt: 提示信息
+            optional: 是否可选，默认 False
 
         Returns:
-            int: 列索引
+            int: 列索引，如果可选且未输入则返回 -1
         """
         col_input = input(f'{prompt} (例如: "{column_type}" 或 "1"): ')
+
+        if optional and not col_input.strip():
+            return -1
+
         col_index = get_column_index(self.column_names, col_input)
 
         if col_index == -1:
@@ -624,11 +634,14 @@ class ExcelProcessor:
         question_col_index = column_mapping["question_col_index"]
         ai_answer_col_index = column_mapping["ai_answer_col_index"]
 
-        doc_name = (
-            str(row.iloc[doc_name_col_index]).strip()
-            if pd.notna(row.iloc[doc_name_col_index])
-            else "未知文档"
-        )
+        if doc_name_col_index == -1:
+            doc_name = "未知文档"
+        else:
+            doc_name = (
+                str(row.iloc[doc_name_col_index]).strip()
+                if pd.notna(row.iloc[doc_name_col_index])
+                else "未知文档"
+            )
         question = (
             str(row.iloc[question_col_index]).strip()
             if pd.notna(row.iloc[question_col_index])

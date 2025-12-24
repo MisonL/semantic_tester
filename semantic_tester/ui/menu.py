@@ -27,7 +27,7 @@ class MenuHandler:
         print("🎯 请选择操作:")
         print("   1. 开始新的语义分析")
         print("   2. 查看使用说明")
-        print("   3. AI供应商管理")
+        print("   3. 生成测试数据模板")
         print("   4. 退出程序")
         print()
 
@@ -42,31 +42,6 @@ class MenuHandler:
             except (EOFError, KeyboardInterrupt):
                 return "4"  # 返回退出选项
 
-    @staticmethod
-    def show_provider_management_menu() -> str:
-        """
-        显示AI供应商管理菜单
-
-        Returns:
-            str: 用户选择
-        """
-        print(f"\n{Fore.CYAN}=== AI供应商管理 ==={Style.RESET_ALL}")
-        print("1. 查看供应商验证状态")
-        print("2. 切换当前供应商")
-        print("3. 重新验证所有供应商")
-        print("4. 查看供应商详细信息")
-        print("5. 返回主菜单")
-
-        while True:
-            try:
-                choice = input(
-                    f"\n{Fore.YELLOW}请选择操作 (1-5): {Style.RESET_ALL}"
-                ).strip()
-                if choice in ["1", "2", "3", "4", "5"]:
-                    return choice
-                print(f"{Fore.RED}❌ 无效选择，请输入 1-5{Style.RESET_ALL}")
-            except (EOFError, KeyboardInterrupt):
-                return "5"  # 返回主菜单
 
     @staticmethod
     def show_help_menu() -> str:
@@ -107,6 +82,7 @@ class MenuHandler:
 • 支持批量处理 Excel 中的问答记录
 • 自动检测 dify_chat_tester 输出格式
 • 提供详细的判断依据和结果
+• 支持生成标准测试数据模板
 • 支持增量保存，防止数据丢失
 
 适用场景：
@@ -171,8 +147,8 @@ Dify Chat Tester 格式支持：
 Q: 如何获取 Google Gemini API 密钥？
 A: 访问 https://aistudio.google.com/app/apikey 获取 API 密钥
 
-Q: 支持多个 API 密钥吗？
-A: 支持多个密钥轮换使用，避免速率限制
+Q: 如何生成测试数据模板？
+A: 在主菜单选择"3. 生成测试数据模板"，支持单供应商和多供应商格式
 
 Q: 处理大量数据时程序中断怎么办？
 A: 程序支持增量保存，重新运行会从中断处继续
